@@ -45,6 +45,8 @@
 | `/revoke` | إلغاء وصول ضيف |
 | `/help` | عرض كل الأوامر |
 
+يسعدني تجربتك لتطبيقي الأول على ايفون apps.abod.ws/aish
+
 ---
 
 ## English
@@ -339,6 +341,8 @@ Set up as a service and scan QR code with a dedicated WhatsApp number.
 Built by [Abdullah Altamimi (@AbOd)](https://github.com/AbOdWs)
 
 If this helped you, consider using the [Hostinger referral link](https://www.hostinger.com?REFERRALCODE=GIQKABOD9A2H) when getting your VPS.
+
+Please check my first iOS App apps.abod.ws/aish
 
 ---
 

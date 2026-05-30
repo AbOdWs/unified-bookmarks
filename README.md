@@ -1,4 +1,4 @@
-![Personal Knowledge Brain](banner.svg)
+![Personal Knowledge Brain](github_banner.svg)
 # 🧠 Personal Knowledge Brain
 
 > A self-hosted personal knowledge pipeline that captures, organizes, and retrieves anything you save — links, voice notes, images — via Telegram and WhatsApp.

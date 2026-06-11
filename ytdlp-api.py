@@ -72,7 +72,7 @@ def try_whisper(url, tmpdir, duration):
         return ''
     audio_tpl = os.path.join(tmpdir, 'audio.%(ext)s')
     subprocess.run(
-        ytdlp_cmd('-f', 'bestaudio[filesize<100M]/bestaudio', '-x',
+        ytdlp_cmd('-f', 'bestaudio[filesize<100M]/bestaudio/best[filesize<200M]/best', '-x',
                   '--audio-format', 'mp3', '--audio-quality', '32K',
                   '-o', audio_tpl, url),
         capture_output=True, timeout=600)

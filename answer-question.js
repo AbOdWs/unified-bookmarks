@@ -11,6 +11,29 @@ const chatId = String(message.chat?.id || '');
 const KN = config.knowledge_dir;
 const WIKI = KN + '/wiki';
 const PUBLIC = KN + '/_public';
+const GH = config.github_base || '';
+
+// Turn the model's [[card]] citations into Telegram web links (GitHub card + original source).
+function telegramFormat(answer, meta) {
+  if (!answer) return answer;
+  const names = [...new Set((answer.match(/\[\[([^\]]+)\]\]/g) || []).map(s => s.slice(2, -2).trim()))];
+  // drop the model's own Sources/المصادر line — we build our own
+  let prose = answer.replace(/\n*\s*(sources|المصادر|المصدر)\s*:[\s\S]*$/i, '');
+  prose = prose.replace(/\[\[([^\]]+)\]\]/g, '$1');           // strip remaining brackets
+  prose = prose.replace(/([_*`\[\]])/g, '\\$1').trim();        // escape legacy-markdown specials
+  let footer = '';
+  if (names.length) {
+    footer = '\n\n🔗 المصادر:';
+    for (const n of names) {
+      const m = meta[n];
+      const cardUrl = (m && m.rel && GH) ? GH + '/wiki/' + m.rel.split('/').map(encodeURIComponent).join('/') : null;
+      let line = '\n• ' + (cardUrl ? '[' + n + '](' + cardUrl + ')' : n);
+      if (m && m.sourceUrl) line += ' — [المصدر](' + m.sourceUrl + ')';
+      footer += line;
+    }
+  }
+  return prose + footer;
+}
 
 // ---------- helpers ----------
 function listCards(subdir) {
@@ -66,7 +89,14 @@ async function answerFromWiki(q, restrictDir) {
   }
   scored.sort((a, b) => b.score - a.score);
   const top = scored.slice(0, 12);
-  if (top.length === 0) return { answer: null, cards: [] };
+  if (top.length === 0) return { answer: null, cards: [], meta: {} };
+
+  // metadata for citation links: card path + original source URL (if any)
+  const meta = {};
+  for (const c of top) {
+    const m = c.txt.match(/^source-url:\s*(\S+)/m) || c.txt.match(/^source:\s*(https?:\/\/\S+)/m);
+    meta[cardName(c.rel)] = { rel: c.rel, sourceUrl: m ? m[1] : null };
+  }
 
   let context = '';
   let indexTxt = '';
@@ -92,7 +122,7 @@ async function answerFromWiki(q, restrictDir) {
     for (const s of sents) { const k = s.trim().slice(0, 40); if (k && seen.has(k)) continue; seen.add(k); kept.push(s); }
     ans = kept.join(' ').slice(0, 2000);
   }
-  return { answer: ans, cards: top.map(c => cardName(c.rel)) };
+  return { answer: ans, cards: top.map(c => cardName(c.rel)), meta };
 }
 
 // ====================================================
@@ -209,9 +239,9 @@ if (isOwner()) {
     let pending = 0;
     try { pending = fs.readdirSync(KN + '/raw/inbox').filter(f => f.endsWith('.md')).length; } catch(e) {}
     const note = pending ? '\n\n(ملاحظة: ' + pending + ' عنصر ملتقط في raw/inbox لم يُبنَ بعد — جرّب /rescan)' : '';
-    return { answer: (r.answer || 'لم أجد شيئاً عن هذا في الويكي.') + note };
+    return { answer: telegramFormat(r.answer || 'لم أجد شيئاً عن هذا في الويكي.', r.meta || {}) + note, markdown: true };
   }
-  return { answer: r.answer };
+  return { answer: telegramFormat(r.answer, r.meta || {}), markdown: true };
 }
 
 // ====================================================

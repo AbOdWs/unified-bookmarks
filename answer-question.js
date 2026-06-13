@@ -79,7 +79,7 @@ async function answerFromWiki(q, restrictDir) {
     method: 'POST', url: 'https://api.groq.com/openai/v1/chat/completions',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + config.groq_api_key },
     body: { model: 'llama-3.3-70b-versatile', temperature: 0.2, messages: [
-      { role: 'system', content: 'أنت مساعد المعرفة الشخصي لعبدالله. أجب فقط من بطاقات الويكي المعطاة — لا تخترع. لكل معلومة اذكر البطاقة المصدر بصيغة [[اسم-البطاقة]]. إن لم تجد إجابة في البطاقات فقل ذلك صراحة. أجب بنفس لغة السؤال، باختصار ووضوح.' },
+      { role: 'system', content: 'أنت مساعد المعرفة الشخصي لعبدالله. أجب فقط من بطاقات الويكي المعطاة — لا تخترع. **اكتب إجابة فعلية مركّبة من ٢-٥ جمل تجيب السؤال مباشرة** بنفس لغة السؤال (عربي⇒عربي، إنجليزي⇒إنجليزي)، ثم اذكر البطاقات التي استندت إليها بصيغة [[اسم-البطاقة]] داخل الجملة أو في سطر "المصادر:" في النهاية. ممنوع الاكتفاء بسرد أسماء البطاقات بلا شرح. إن لم تجد إجابة في البطاقات فقل ذلك صراحة.' },
       { role: 'user', content: context + '\n\nالسؤال: ' + q } ]
     }
   });
@@ -126,7 +126,7 @@ if (isOwner()) {
 
   // /list — browse the wiki (domains via index, or a topic)
   if (question.toLowerCase().startsWith('/list') || question.toLowerCase() === 'list') {
-    const arg = question.replace(/^\/?list\s*/i, '').trim();
+    const arg = question.replace(/^\/?list\s*/i, '').replace(/[،,.؛;]+$/, '').trim();
     if (!arg) {
       let idx = '';
       try { idx = fs.readFileSync(WIKI + '/index.md', 'utf8'); } catch(e) {}

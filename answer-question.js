@@ -78,12 +78,21 @@ async function answerFromWiki(q, restrictDir) {
   const resp = await this.helpers.httpRequest({
     method: 'POST', url: 'https://api.groq.com/openai/v1/chat/completions',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + config.groq_api_key },
-    body: { model: 'llama-3.3-70b-versatile', temperature: 0.2, messages: [
-      { role: 'system', content: 'أنت مساعد المعرفة الشخصي لعبدالله. أجب فقط من بطاقات الويكي المعطاة — لا تخترع. **اكتب إجابة فعلية مركّبة من ٢-٥ جمل تجيب السؤال مباشرة** بنفس لغة السؤال (عربي⇒عربي، إنجليزي⇒إنجليزي)، ثم اذكر البطاقات التي استندت إليها بصيغة [[اسم-البطاقة]] داخل الجملة أو في سطر "المصادر:" في النهاية. ممنوع الاكتفاء بسرد أسماء البطاقات بلا شرح. إن لم تجد إجابة في البطاقات فقل ذلك صراحة.' },
-      { role: 'user', content: context + '\n\nالسؤال: ' + q } ]
+    body: { model: 'llama-3.3-70b-versatile', temperature: 0.3, max_tokens: 600,
+      frequency_penalty: 0.6, presence_penalty: 0.3, messages: [
+      { role: 'system', content: 'You are Abdullah\'s personal knowledge assistant. Answer ONLY from the provided wiki cards — never invent. CRITICAL RULES:\n1) Reply in the SAME language as the question (Arabic question -> Arabic answer; English question -> English answer).\n2) Be concise: 2-5 sentences MAX. Never repeat a sentence or phrase. Stop when answered.\n3) Cite the cards you used as [[card-name]], inline or in a final "Sources:" line.\n4) If the cards do not answer it, say so plainly.' },
+      { role: 'user', content: context + '\n\nQuestion: ' + q } ]
     }
   });
-  return { answer: resp.choices?.[0]?.message?.content || null, cards: top.map(c => cardName(c.rel)) };
+  let ans = resp.choices?.[0]?.message?.content || null;
+  // safety net: collapse any runaway repetition the model still produces
+  if (ans) {
+    const sents = ans.split(/(?<=[.!؟\n])\s+/);
+    const seen = new Set(); const kept = [];
+    for (const s of sents) { const k = s.trim().slice(0, 40); if (k && seen.has(k)) continue; seen.add(k); kept.push(s); }
+    ans = kept.join(' ').slice(0, 2000);
+  }
+  return { answer: ans, cards: top.map(c => cardName(c.rel)) };
 }
 
 // ====================================================
@@ -228,9 +237,10 @@ for (const f of pubCards) { try { ctx += '\n\n=== ' + f.replace('.md','') + ' ==
 const gResp = await this.helpers.httpRequest({
   method: 'POST', url: 'https://api.groq.com/openai/v1/chat/completions',
   headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + config.groq_api_key },
-  body: { model: 'llama-3.3-70b-versatile', temperature: 0.2, messages: [
-    { role: 'system', content: 'مساعد معرفة. أجب فقط من المحتوى العام المعطى. بنفس لغة السؤال، باختصار.' },
-    { role: 'user', content: ctx.slice(0, 20000) + '\n\nالسؤال: ' + question } ]
+  body: { model: 'llama-3.3-70b-versatile', temperature: 0.3, max_tokens: 600,
+    frequency_penalty: 0.6, presence_penalty: 0.3, messages: [
+    { role: 'system', content: 'Knowledge assistant. Answer ONLY from the provided public content. Reply in the SAME language as the question. Concise: 2-5 sentences max, never repeat yourself.' },
+    { role: 'user', content: ctx.slice(0, 20000) + '\n\nQuestion: ' + question } ]
   }
 });
 return { answer: gResp.choices?.[0]?.message?.content || 'تعذّر الحصول على إجابة.' };

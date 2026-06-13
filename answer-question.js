@@ -194,6 +194,41 @@ if (isOwner()) {
     return { answer: '🗂 بطاقات متعلّقة بـ "' + arg + '":\n' + r.cards.map(c => '• [[' + c + ']]').join('\n') };
   }
 
+  // /publish — run the courier: sanitize share:public cards → _public/_pending → approval
+  if (question.toLowerCase().startsWith('/publish')) {
+    try {
+      await this.helpers.httpRequest({ method: 'POST', url: config.build_trigger_url + '/courier', timeout: 10000 });
+      return { answer: '📤 شغّلت الساعي. سأرسل لك معاينة كل بطاقة معلّمة share: public للموافقة خلال دقائق.' };
+    } catch(e) { return { answer: '❌ تعذّر تشغيل الساعي: ' + e.message }; }
+  }
+
+  // /approve <card> — move a sanitized pending card into _public (guests can then see it)
+  if (question.toLowerCase().startsWith('/approve')) {
+    const name = question.replace(/^\/approve\s*/i, '').trim().replace(/^\[\[|\]\]$/g, '');
+    if (!name) return { answer: 'Usage: /approve <اسم-البطاقة>' };
+    const src = PUBLIC + '/_pending/' + name + '.md';
+    const dst = PUBLIC + '/' + name + '.md';
+    try {
+      if (!fs.existsSync(src)) return { answer: '❌ لا توجد بطاقة معلّقة بهذا الاسم: ' + name };
+      fs.copyFileSync(src, dst); fs.unlinkSync(src);
+      // prune from manifest
+      try { const mf = PUBLIC + '/_pending/_manifest.txt'; const lines = fs.readFileSync(mf,'utf8').split('\n').filter(l => l.trim() && l.trim() !== name); fs.writeFileSync(mf, lines.join('\n') + (lines.length?'\n':'')); } catch(e) {}
+      return { answer: '✅ نُشرت [[' + name + ']] — يراها الضيوف الآن في المحتوى العام.' };
+    } catch(e) { return { answer: '❌ خطأ: ' + e.message }; }
+  }
+
+  // /reject <card> — discard a pending sanitized card
+  if (question.toLowerCase().startsWith('/reject')) {
+    const name = question.replace(/^\/reject\s*/i, '').trim().replace(/^\[\[|\]\]$/g, '');
+    if (!name) return { answer: 'Usage: /reject <اسم-البطاقة>' };
+    const src = PUBLIC + '/_pending/' + name + '.md';
+    try {
+      if (fs.existsSync(src)) fs.unlinkSync(src);
+      try { const mf = PUBLIC + '/_pending/_manifest.txt'; const lines = fs.readFileSync(mf,'utf8').split('\n').filter(l => l.trim() && l.trim() !== name); fs.writeFileSync(mf, lines.join('\n') + (lines.length?'\n':'')); } catch(e) {}
+      return { answer: '🗑 رُفضت ' + name + ' — لم تُنشر، وتبقى خاصة.' };
+    } catch(e) { return { answer: '❌ خطأ: ' + e.message }; }
+  }
+
   // /rescan — trigger build-wiki on new raw/ (مُصنِّف, strong tier on the host)
   if (question.toLowerCase().startsWith('/rescan')) {
     try {
@@ -252,7 +287,7 @@ if (isOwner()) {
   }
 
   if (question.toLowerCase().startsWith('/help')) {
-    return { answer: '📖 *الأوامر*\n\n🔗 *الحفظ*\nأرسل رابطاً/صوتاً/صورة ليُحفظ خاماً تلقائياً\n\n❓ *السؤال*\nاسأل بأي لغة: "ماذا أعرف عن X؟" — أجيب من الويكي مع روابط المصادر\n\n🗂 *التصفّح*\n/list — مجالات اللوحة · /list <موضوع> — بطاقات موضوع\n\n📝 *المهام (كاتب)*\n/task <نص> — مهمة جديدة\n/remind <3days|2weeks|YYYY-MM-DD> <نص> — تذكير\nتظهر في موجز الصباح ٧ص والمساء ٩م\n\n🔄 *البناء*\n/rescan — بناء الويكي الآن · /rules — قواعد MI و vault-map\n\n👥 *الضيوف*\n/invite <id> <topics> <duration> · /guests · /revoke <id>' };
+    return { answer: '📖 *الأوامر*\n\n🔗 *الحفظ*\nأرسل رابطاً/صوتاً/صورة ليُحفظ خاماً تلقائياً\n\n❓ *السؤال*\nاسأل بأي لغة: "ماذا أعرف عن X؟" — أجيب من الويكي مع روابط المصادر\n\n🗂 *التصفّح*\n/list — مجالات اللوحة · /list <موضوع> — بطاقات موضوع\n\n📝 *المهام (كاتب)*\n/task <نص> — مهمة جديدة\n/remind <3days|2weeks|YYYY-MM-DD> <نص> — تذكير\nتظهر في موجز الصباح ٧ص والمساء ٩م\n\n🔄 *البناء*\n/rescan — بناء الويكي الآن · /rules — قواعد MI و vault-map\n\n👥 *الضيوف والنشر*\nعلّم بطاقة share: public ثم /publish — الساعي يعقّمها ويعرضها للموافقة\n/approve <بطاقة> · /reject <بطاقة>\n/invite <id> <topics> <duration> · /guests · /revoke <id>' };
   }
 
   // greetings

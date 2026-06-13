@@ -26,14 +26,15 @@ class Handler(BaseHTTPRequestHandler):
         self._respond(200, {'running': is_running()})
 
     def do_POST(self):
-        if is_running():
+        # /courier runs the courier scan; anything else runs build-wiki
+        script = '/root/courier-scan.sh' if self.path.rstrip('/').endswith('courier') else '/root/build-wiki.sh'
+        if script == '/root/build-wiki.sh' and is_running():
             self._respond(200, {'started': False, 'reason': 'already-running'})
             return
-        # fire and forget; build-wiki.sh handles its own lock + logging
-        subprocess.Popen(['/bin/bash', '/root/build-wiki.sh'],
+        subprocess.Popen(['/bin/bash', script],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                          start_new_session=True)
-        self._respond(200, {'started': True})
+        self._respond(200, {'started': True, 'script': script})
 
     def log_message(self, *a):
         pass

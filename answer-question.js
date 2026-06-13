@@ -62,6 +62,18 @@ function tokens(s) {
     .split(/\s+/).filter(t => t.length >= 2);
 }
 
+// append a line under a heading in كاتب's unified store
+function appendToTasks(heading, line) {
+  const p = KN + '/AIOS/tasks.md';
+  let t = '';
+  try { t = fs.readFileSync(p, 'utf8'); } catch(e) { t = '---\nagent: كاتب\nupdated: \n---\n\n# المهام والتقويم\n'; }
+  const re = new RegExp('(##\\s*' + heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[^\\n]*\\n)');
+  if (re.test(t)) t = t.replace(re, '$1' + line + '\n');
+  else t += '\n## ' + heading + '\n' + line + '\n';
+  t = t.replace(/^updated:.*$/m, 'updated: ' + new Date().toISOString().split('T')[0]);
+  fs.writeFileSync(p, t, 'utf8');
+}
+
 function loadGuests() { try { return JSON.parse(fs.readFileSync(config.guests_file, 'utf8')); } catch(e) { return []; } }
 function saveGuests(g) { fs.writeFileSync(config.guests_file, JSON.stringify(g, null, 2), 'utf8'); }
 function isOwner() { return senderId === String(config.telegram_chat_id); }
@@ -94,7 +106,10 @@ async function answerFromWiki(q, restrictDir) {
   // metadata for citation links: card path + original source URL (if any)
   const meta = {};
   for (const c of top) {
-    const m = c.txt.match(/^source-url:\s*(\S+)/m) || c.txt.match(/^source:\s*(https?:\/\/\S+)/m);
+    // prefer frontmatter source-url; else first http(s) URL anywhere in the card body (batch cards list them)
+    const m = c.txt.match(/^source-url:\s*(\S+)/m)
+           || c.txt.match(/^source:\s*(https?:\/\/\S+)/m)
+           || c.txt.match(/(https?:\/\/[^\s)\]]+)/);
     meta[cardName(c.rel)] = { rel: c.rel, sourceUrl: m ? m[1] : null };
   }
 
@@ -190,6 +205,33 @@ if (isOwner()) {
     }
   }
 
+  // /task <text> — add an open task to كاتب's unified store
+  if (question.toLowerCase().startsWith('/task')) {
+    const txt = question.replace(/^\/task\s*/i, '').trim();
+    if (!txt) return { answer: 'Usage: /task <وصف المهمة>' };
+    appendToTasks('📌 مهام مفتوحة', '- [ ] ' + txt + ' (أُضيفت ' + new Date().toISOString().split('T')[0] + ')');
+    return { answer: '✅ أُضيفت مهمة:\n' + txt + '\n\nستظهر في موجز كاتب.' };
+  }
+
+  // /remind <when> <text> — standalone reminder into the unified store (كاتب owns it)
+  if (question.toLowerCase().startsWith('/remind')) {
+    const body = question.replace(/^\/remind\s*/i, '').trim();
+    const iso = body.match(/^(\d{4}-\d{2}-\d{2})/);
+    const rel = body.match(/^(\d+)\s*(days?|weeks?|months?|يوم|أيام|[أا]سبوع|[أا]سابيع|شهر|[أا]شهر|شهور)\b/i);
+    let date = null, rest = body;
+    if (iso) { date = iso[1]; rest = body.slice(iso[0].length).trim(); }
+    else if (rel) {
+      const amt = parseInt(rel[1]); const u = rel[2].toLowerCase(); const d = new Date();
+      if (/week|سبوع|سابيع/.test(u)) d.setDate(d.getDate() + amt * 7);
+      else if (/month|شهر|شهور/.test(u)) d.setMonth(d.getMonth() + amt);
+      else d.setDate(d.getDate() + amt);
+      date = d.toISOString().split('T')[0]; rest = body.slice(rel[0].length).trim();
+    }
+    if (!rest) return { answer: 'Usage: /remind <3days|2weeks|1month|YYYY-MM-DD> <نص>' };
+    appendToTasks('⏰ تذكيرات', '- (' + (date || 'بلا تاريخ') + ') ' + rest);
+    return { answer: '⏰ سُجّل تذكير' + (date ? ' (' + date + ')' : '') + ':\n' + rest + '\n\nسيذكّرك به كاتب في موجزه.' };
+  }
+
   // /rules — rules live in MI.md + vault-map.md now (show them)
   if (question.toLowerCase().startsWith('/rules')) {
     let mi = '', vm = '';
@@ -199,21 +241,9 @@ if (isOwner()) {
     return { answer: '📋 *القواعد الآن في AIOS/MI.md و AIOS/vault-map.md*\n\n' + (laws || 'افتح AIOS/MI.md') + '\n\n✏️ للتعديل: حرّر الملفين في Obsidian.' };
   }
 
-  // /digest — unchanged
+  // /digest — retired in favor of كاتب's morning/evening briefs
   if (question.toLowerCase().startsWith('/digest')) {
-    const args = question.replace(/^\/digest\s*/i, '').trim().toLowerCase();
-    let settings = { enabled: true, time: '09:00', summary: true, categories: true, voice: true, images: true, stats: true, motivation: true };
-    try { settings = { ...settings, ...JSON.parse(fs.readFileSync(config.digest_settings_file, 'utf8')) }; } catch(e) {}
-    if (!args) { const st = s => s ? '✅' : '❌';
-      return { answer: `⚙️ إعدادات الموجز\n\nمفعّل: ${st(settings.enabled)}\nالوقت: ${settings.time}\n\nملخصات: ${st(settings.summary)}\nحسب الفئة: ${st(settings.categories)}\nصوت: ${st(settings.voice)}\nصور: ${st(settings.images)}\nإحصاءات: ${st(settings.stats)}\nتحفيز: ${st(settings.motivation)}\n\n/digest on|off · /digest time HH:MM` }; }
-    const parts = args.split(' '); const setting = parts[0]; const value = parts[1];
-    if (setting === 'on') settings.enabled = true;
-    else if (setting === 'off') settings.enabled = false;
-    else if (setting === 'time' && value) { if (value.match(/^\d{1,2}:\d{2}$/)) settings.time = value; else return { answer: '❌ صيغة وقت خاطئة. مثال: /digest time 08:30' }; }
-    else if (['summary','categories','voice','images','stats','motivation'].includes(setting)) { if (value === 'on') settings[setting] = true; else if (value === 'off') settings[setting] = false; else return { answer: '❌ on أو off' }; }
-    else return { answer: '❌ خيار غير معروف. أرسل /digest' };
-    fs.writeFileSync(config.digest_settings_file, JSON.stringify(settings, null, 2), 'utf8');
-    return { answer: '✅ تم الحفظ. أرسل /digest لعرض الإعدادات.' };
+    return { answer: 'ℹ️ الموجز اليومي القديم استُبدل بموجزات كاتب: 🌅 الصباح ٧ص و🌙 المساء ٩م تلقائياً.\n\nاستخدم /task و /remind لإضافة مهام وتذكيرات، وتظهر في الموجز.' };
   }
 
   // deprecated capture-time recategorization commands (capture is dumb now; مُصنِّف organizes)
@@ -222,7 +252,7 @@ if (isOwner()) {
   }
 
   if (question.toLowerCase().startsWith('/help')) {
-    return { answer: '📖 *الأوامر*\n\n🔗 *الحفظ*\nأرسل رابطاً/صوتاً/صورة ليُحفظ خاماً تلقائياً\n\n❓ *السؤال*\nاسأل بأي لغة: "ماذا أعرف عن X؟" — أجيب من الويكي مع ذكر البطاقات\n\n🗂 *التصفّح*\n/list — مجالات اللوحة · /list <موضوع> — بطاقات موضوع\n\n🔄 *البناء*\n/rescan — بناء الويكي الآن من الجديد\n/rules — عرض قواعد MI و vault-map\n\n📊 /digest · ⏰ /remind\n\n👥 *الضيوف*\n/invite <id> <topics> <duration> · /guests · /revoke <id>' };
+    return { answer: '📖 *الأوامر*\n\n🔗 *الحفظ*\nأرسل رابطاً/صوتاً/صورة ليُحفظ خاماً تلقائياً\n\n❓ *السؤال*\nاسأل بأي لغة: "ماذا أعرف عن X؟" — أجيب من الويكي مع روابط المصادر\n\n🗂 *التصفّح*\n/list — مجالات اللوحة · /list <موضوع> — بطاقات موضوع\n\n📝 *المهام (كاتب)*\n/task <نص> — مهمة جديدة\n/remind <3days|2weeks|YYYY-MM-DD> <نص> — تذكير\nتظهر في موجز الصباح ٧ص والمساء ٩م\n\n🔄 *البناء*\n/rescan — بناء الويكي الآن · /rules — قواعد MI و vault-map\n\n👥 *الضيوف*\n/invite <id> <topics> <duration> · /guests · /revoke <id>' };
   }
 
   // greetings

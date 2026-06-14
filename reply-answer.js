@@ -10,15 +10,17 @@ async function send(body) {
   return this.helpers.httpRequest({ method: 'POST', url, headers: { 'Content-Type': 'application/json' }, body });
 }
 
-if (result.markdown) {
+if (result.html) {
   try {
-    await send.call(this, { chat_id: chatId, text: answer, parse_mode: 'Markdown', disable_web_page_preview: true });
-    return { sent: true, mode: 'markdown' };
+    await send.call(this, { chat_id: chatId, text: answer, parse_mode: 'HTML', disable_web_page_preview: true });
+    return { sent: true, mode: 'html' };
   } catch(e) {
-    // Markdown parse error → resend as plain text (strip link syntax) so the answer never drops
+    // HTML parse error → strip tags and resend as plain text so the answer never drops
     const plain = answer
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')   // [text](url) -> text
-      .replace(/\\([_*`\[\]])/g, '$1');           // unescape
+      .replace(/<blockquote[^>]*>/gi, '').replace(/<\/blockquote>/gi, '')
+      .replace(/<a href="([^"]+)">([^<]*)<\/a>/gi, '$2 ($1)')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
     await send.call(this, { chat_id: chatId, text: plain, disable_web_page_preview: true });
     return { sent: true, mode: 'plain-fallback' };
   }

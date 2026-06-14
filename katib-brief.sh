@@ -22,17 +22,20 @@ timeout 600 claude -p "$TASK" --allowedTools "Read,Write,Edit,Glob,Grep" \
   --permission-mode acceptEdits >> "$LOG" 2>&1
 echo "$(date -u +%FT%TZ) END katib $KIND (exit $?)" >> "$LOG"
 
-# deliver to Telegram
+# deliver to Telegram as HTML (file stays clean Markdown for Obsidian; we convert on send)
 if [ -f "$OUT" ]; then
   TOKEN=$(python3 -c "import json;print(json.load(open('/root/config.json'))['telegram_bot_token'])")
   CHAT=$(python3 -c "import json;print(json.load(open('/root/config.json'))['telegram_chat_id'])")
-  HEAD=$([ "$KIND" = "morning" ] && echo "🌅 موجز الصباح" || echo "🌙 ختام المساء")
-  BODY=$(cat "$OUT")
+  HEAD=$([ "$KIND" = "morning" ] && echo "🌅 <b>موجز الصباح</b>" || echo "🌙 <b>ختام المساء</b>")
+  # strip YAML frontmatter, HTML-escape, **bold**->-<b>, drop leading # from headings
+  BODY=$(perl -0777 -pe 's/^---\n.*?\n---\n//s' "$OUT" \
+    | perl -pe 's/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g' \
+    | perl -pe 's/\*\*(.+?)\*\*/<b>$1<\/b>/g; s/^#+\s*(.+)$/<b>$1<\/b>/' )
   curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
     --data-urlencode "chat_id=${CHAT}" \
     --data-urlencode "text=${HEAD} — ${TODAY}
 
 ${BODY}" \
-    -d "parse_mode=Markdown" >/dev/null
+    -d "parse_mode=HTML" -d "disable_web_page_preview=true" >/dev/null
   echo "$(date -u +%FT%TZ) sent $KIND to telegram" >> "$LOG"
 fi

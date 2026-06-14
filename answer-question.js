@@ -13,24 +13,28 @@ const WIKI = KN + '/wiki';
 const PUBLIC = KN + '/_public';
 const GH = config.github_base || '';
 
-// Turn the model's [[card]] citations into Telegram web links (GitHub card + original source).
+// HTML is more robust than Markdown for our content (only & < > need escaping) and is the
+// only mode where expandable blockquotes work — so citations collapse into a tap-to-expand block.
+function htmlEscape(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
 function telegramFormat(answer, meta) {
   if (!answer) return answer;
   const names = [...new Set((answer.match(/\[\[([^\]]+)\]\]/g) || []).map(s => s.slice(2, -2).trim()))];
   // drop the model's own Sources/المصادر line — we build our own
   let prose = answer.replace(/\n*\s*(sources|المصادر|المصدر)\s*:[\s\S]*$/i, '');
-  prose = prose.replace(/\[\[([^\]]+)\]\]/g, '$1');           // strip remaining brackets
-  prose = prose.replace(/([_*`\[\]])/g, '\\$1').trim();        // escape legacy-markdown specials
+  prose = prose.replace(/\[\[([^\]]+)\]\]/g, '$1');   // strip remaining brackets
+  prose = htmlEscape(prose).trim();
   let footer = '';
   if (names.length) {
-    footer = '\n\n🔗 المصادر:';
+    const items = [];
     for (const n of names) {
       const m = meta[n];
       const cardUrl = (m && m.rel && GH) ? GH + '/wiki/' + m.rel.split('/').map(encodeURIComponent).join('/') : null;
-      let line = '\n• ' + (cardUrl ? '[' + n + '](' + cardUrl + ')' : n);
-      if (m && m.sourceUrl) line += ' — [المصدر](' + m.sourceUrl + ')';
-      footer += line;
+      let line = cardUrl ? '<a href="' + htmlEscape(cardUrl) + '">' + htmlEscape(n) + '</a>' : htmlEscape(n);
+      if (m && m.sourceUrl) line += ' — <a href="' + htmlEscape(m.sourceUrl) + '">المصدر</a>';
+      items.push('• ' + line);
     }
+    footer = '\n\n<blockquote expandable>🔗 المصادر:\n' + items.join('\n') + '</blockquote>';
   }
   return prose + footer;
 }
@@ -324,9 +328,9 @@ if (isOwner()) {
     let pending = 0;
     try { pending = fs.readdirSync(KN + '/raw/inbox').filter(f => f.endsWith('.md')).length; } catch(e) {}
     const note = pending ? '\n\n(ملاحظة: ' + pending + ' عنصر ملتقط في raw/inbox لم يُبنَ بعد — جرّب /rescan)' : '';
-    return { answer: telegramFormat(r.answer || 'لم أجد شيئاً عن هذا في الويكي.', r.meta || {}) + note, markdown: true };
+    return { answer: telegramFormat(r.answer || 'لم أجد شيئاً عن هذا في الويكي.', r.meta || {}) + note, html: true };
   }
-  return { answer: telegramFormat(r.answer, r.meta || {}), markdown: true };
+  return { answer: telegramFormat(r.answer, r.meta || {}), html: true };
 }
 
 // ====================================================

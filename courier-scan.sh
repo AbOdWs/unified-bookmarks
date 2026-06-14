@@ -24,16 +24,15 @@ sent_any=0
 for f in _public/_pending/*.md; do
   [ -e "$f" ] || continue
   name=$(basename "$f" .md)
-  preview=$(head -c 1200 "$f")
+  # HTML-escape the card preview and collapse it into an expandable blockquote
+  preview=$(head -c 1500 "$f" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
   curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
     --data-urlencode "chat_id=${CHAT}" \
-    --data-urlencode "text=📤 *الساعي* — جاهز للنشر: ${name}
-
-${preview}
-
+    --data-urlencode "text=📤 <b>الساعي</b> — جاهز للنشر: ${name}
+<blockquote expandable>${preview}</blockquote>
 وافق: /approve ${name}
 ارفض: /reject ${name}" \
-    -d "parse_mode=Markdown" -d "disable_web_page_preview=true" >/dev/null
+    -d "parse_mode=HTML" -d "disable_web_page_preview=true" >/dev/null
   sent_any=1
 done
 [ $sent_any -eq 0 ] && curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" --data-urlencode "chat_id=${CHAT}" --data-urlencode "text=ℹ️ الساعي: لا بطاقات جديدة معلّمة share: public." >/dev/null

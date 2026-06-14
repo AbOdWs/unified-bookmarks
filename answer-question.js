@@ -194,6 +194,26 @@ if (isOwner()) {
     return { answer: '🗂 بطاقات متعلّقة بـ "' + arg + '":\n' + r.cards.map(c => '• [[' + c + ']]').join('\n') };
   }
 
+  // /spec <idea> — فقيه turns an idea into a requirements DRAFT (you approve before وكيل builds)
+  if (question.toLowerCase().startsWith('/spec')) {
+    const idea = question.replace(/^\/spec\s*/i, '').trim();
+    if (!idea) return { answer: 'Usage: /spec <فكرة المشروع>\nفقيه يكتب مسودة متطلبات، تراجعها وتعتمدها قبل أي بناء.' };
+    try {
+      await this.helpers.httpRequest({ method: 'POST', url: config.build_trigger_url + '/spec', headers: { 'Content-Type': 'application/json' }, body: { idea }, timeout: 10000 });
+      return { answer: '📋 فقيه يحضّر مسودة المتطلبات. سأرسلها لك للمراجعة خلال دقائق — لن يُبنى شيء قبل أن تعتمدها (status: approved).' };
+    } catch(e) { return { answer: '❌ تعذّر تشغيل فقيه: ' + e.message }; }
+  }
+
+  // /research <question> — فقيه writes a research report (options/tradeoffs/recommendation)
+  if (question.toLowerCase().startsWith('/research')) {
+    const q = question.replace(/^\/research\s*/i, '').trim();
+    if (!q) return { answer: 'Usage: /research <سؤال>\nفقيه يكتب تقرير مقارنة في wiki/synthesis.' };
+    try {
+      await this.helpers.httpRequest({ method: 'POST', url: config.build_trigger_url + '/research', headers: { 'Content-Type': 'application/json' }, body: { idea: q }, timeout: 10000 });
+      return { answer: '🔎 فقيه يبحث ويكتب تقريراً. سأرسله لك خلال دقائق.' };
+    } catch(e) { return { answer: '❌ تعذّر تشغيل فقيه: ' + e.message }; }
+  }
+
   // /publish — run the courier: sanitize share:public cards → _public/_pending → approval
   if (question.toLowerCase().startsWith('/publish')) {
     try {
@@ -287,7 +307,7 @@ if (isOwner()) {
   }
 
   if (question.toLowerCase().startsWith('/help')) {
-    return { answer: '📖 *الأوامر*\n\n🔗 *الحفظ*\nأرسل رابطاً/صوتاً/صورة ليُحفظ خاماً تلقائياً\n\n❓ *السؤال*\nاسأل بأي لغة: "ماذا أعرف عن X؟" — أجيب من الويكي مع روابط المصادر\n\n🗂 *التصفّح*\n/list — مجالات اللوحة · /list <موضوع> — بطاقات موضوع\n\n📝 *المهام (كاتب)*\n/task <نص> — مهمة جديدة\n/remind <3days|2weeks|YYYY-MM-DD> <نص> — تذكير\nتظهر في موجز الصباح ٧ص والمساء ٩م\n\n🔄 *البناء*\n/rescan — بناء الويكي الآن · /rules — قواعد MI و vault-map\n\n👥 *الضيوف والنشر*\nعلّم بطاقة share: public ثم /publish — الساعي يعقّمها ويعرضها للموافقة\n/approve <بطاقة> · /reject <بطاقة>\n/invite <id> <topics> <duration> · /guests · /revoke <id>' };
+    return { answer: '📖 *الأوامر*\n\n🔗 *الحفظ*\nأرسل رابطاً/صوتاً/صورة ليُحفظ خاماً تلقائياً\n\n❓ *السؤال*\nاسأل بأي لغة: "ماذا أعرف عن X؟" — أجيب من الويكي مع روابط المصادر\n\n🗂 *التصفّح*\n/list — مجالات اللوحة · /list <موضوع> — بطاقات موضوع\n\n📝 *المهام (كاتب)*\n/task <نص> — مهمة جديدة\n/remind <3days|2weeks|YYYY-MM-DD> <نص> — تذكير\nتظهر في موجز الصباح ٧ص والمساء ٩م\n\n🔄 *البناء*\n/rescan — بناء الويكي الآن · /rules — قواعد MI و vault-map\n\n🏗 *المشاريع*\n/research <سؤال> — تقرير فقيه\n/spec <فكرة> — مسودة متطلبات (تعتمدها ثم يبنيها وكيل)\n\n👥 *الضيوف والنشر*\nعلّم بطاقة share: public ثم /publish — الساعي يعقّمها ويعرضها للموافقة\n/approve <بطاقة> · /reject <بطاقة>\n/invite <id> <topics> <duration> · /guests · /revoke <id>' };
   }
 
   // greetings

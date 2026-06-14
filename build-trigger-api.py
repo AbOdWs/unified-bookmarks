@@ -26,8 +26,27 @@ class Handler(BaseHTTPRequestHandler):
         self._respond(200, {'running': is_running()})
 
     def do_POST(self):
-        # /courier runs the courier scan; anything else runs build-wiki
-        script = '/root/courier-scan.sh' if self.path.rstrip('/').endswith('courier') else '/root/build-wiki.sh'
+        path = self.path.rstrip('/')
+        length = int(self.headers.get('Content-Length', 0))
+        raw = self.rfile.read(length).decode('utf-8', 'replace') if length else ''
+
+        # فقيه planning endpoints — pass the idea/question via body {idea}
+        if path.endswith('spec') or path.endswith('research'):
+            try:
+                idea = json.loads(raw).get('idea', '') if raw else ''
+            except Exception:
+                idea = raw
+            with open('/root/.faqih-request.txt', 'w') as f:
+                f.write(idea)
+            mode = 'research' if path.endswith('research') else 'spec'
+            subprocess.Popen(['/bin/bash', '/root/faqih-spec.sh', mode],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+            self._respond(200, {'started': True, 'agent': 'faqih', 'mode': mode})
+            return
+
+        # courier vs build-wiki
+        script = '/root/courier-scan.sh' if path.endswith('courier') else '/root/build-wiki.sh'
         if script == '/root/build-wiki.sh' and is_running():
             self._respond(200, {'started': False, 'reason': 'already-running'})
             return

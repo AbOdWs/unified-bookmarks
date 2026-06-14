@@ -22,6 +22,19 @@ timeout 600 claude -p "$TASK" --allowedTools "Read,Write,Edit,Glob,Grep" \
   --permission-mode acceptEdits >> "$LOG" 2>&1
 echo "$(date -u +%FT%TZ) END katib $KIND (exit $?)" >> "$LOG"
 
+# health check (morning only) — surface any broken AIOS component (report item 5)
+HEALTH=""
+if [ "$KIND" = "morning" ]; then
+  probs=""
+  for svc in build-trigger-api ytdlp-api whisper-api; do
+    systemctl is-active --quiet "$svc.service" || probs="${probs}\n• خدمة ${svc} متوقفة"
+  done
+  last=$(grep -E "GAVE UP|rc [1-9]" /root/build-wiki.log 2>/dev/null | tail -1)
+  [ -n "$last" ] && probs="${probs}\n• آخر بناء ويكي به مشكلة: ${last}"
+  curl -s --max-time 5 http://localhost:8767/ >/dev/null 2>&1 || probs="${probs}\n• build-trigger لا يستجيب"
+  [ -n "$probs" ] && HEALTH="\n\n⚠️ <b>صحة النظام:</b>${probs}"
+fi
+
 # deliver to Telegram as HTML (file stays clean Markdown for Obsidian; we convert on send)
 if [ -f "$OUT" ]; then
   TOKEN=$(python3 -c "import json;print(json.load(open('/root/config.json'))['telegram_bot_token'])")
@@ -35,7 +48,7 @@ if [ -f "$OUT" ]; then
     --data-urlencode "chat_id=${CHAT}" \
     --data-urlencode "text=${HEAD} — ${TODAY}
 
-${BODY}" \
+${BODY}$(printf "$HEALTH")" \
     -d "parse_mode=HTML" -d "disable_web_page_preview=true" >/dev/null
   echo "$(date -u +%FT%TZ) sent $KIND to telegram" >> "$LOG"
 fi

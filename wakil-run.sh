@@ -46,9 +46,18 @@ $SPEC
 مشروع واحد فقط."
 
 echo "$(date -u +%FT%TZ) وكيل: BUILD START $NAME" >> "$LOG"
-timeout 3000 claude -p "$TASK" --allowedTools "Read,Write,Edit,Glob,Grep,Bash" --permission-mode acceptEdits >> "$LOG" 2>&1
-echo "$(date -u +%FT%TZ) وكيل: BUILD END $NAME (exit $?)" >> "$LOG"
+OUT=$(timeout 3000 claude -p "$TASK" --allowedTools "Read,Write,Edit,Glob,Grep,Bash" --permission-mode acceptEdits 2>&1)
+rc=$?
+echo "$OUT" >> "$LOG"
+echo "$(date -u +%FT%TZ) وكيل: BUILD END $NAME (exit $rc)" >> "$LOG"
 
 TOKEN=$(python3 -c "import json;print(json.load(open('/root/config.json'))['telegram_bot_token'])")
 CHAT=$(python3 -c "import json;print(json.load(open('/root/config.json'))['telegram_chat_id'])")
-curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" --data-urlencode "chat_id=${CHAT}" --data-urlencode "text=🏗 وكيل: انتهى بناء «${NAME}» في ${DEST} (فرع build/${NAME}). راجع PROGRESS.md — لم يُنشر شيء." >/dev/null
+if echo "$OUT" | grep -qiE "session limit|rate limit|usage limit|Not logged in"; then
+  MSG="⚠️ وكيل: تعذّر بناء «${NAME}» — حد الجلسة. لم يتغيّر status (يبقى approved، سيُحاول الليلة القادمة)."
+elif [ $rc -ne 0 ]; then
+  MSG="⚠️ وكيل: فشل بناء «${NAME}» (rc ${rc}). راجع /root/wakil.log. لم يُنشر شيء."
+else
+  MSG="🏗 وكيل: انتهى بناء «${NAME}» في ${DEST} (فرع build/${NAME}). راجع PROGRESS.md — لم يُنشر شيء."
+fi
+curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" --data-urlencode "chat_id=${CHAT}" --data-urlencode "text=${MSG}" >/dev/null

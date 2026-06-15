@@ -45,7 +45,14 @@ class Handler(BaseHTTPRequestHandler):
             self._respond(200, {'started': True, 'agent': 'faqih', 'mode': mode})
             return
 
-        # courier vs build-wiki
+        # courier (optional {topic}) vs build-wiki
+        if path.endswith('courier'):
+            try:
+                topic = json.loads(raw).get('topic', '') if raw else ''
+            except Exception:
+                topic = ''
+            with open('/root/.courier-topic.txt', 'w') as f:
+                f.write(topic or '')
         script = '/root/courier-scan.sh' if path.endswith('courier') else '/root/build-wiki.sh'
         if script == '/root/build-wiki.sh' and is_running():
             self._respond(200, {'started': False, 'reason': 'already-running'})

@@ -218,27 +218,41 @@ if (isOwner()) {
     } catch(e) { return { answer: '❌ تعذّر تشغيل فقيه: ' + e.message }; }
   }
 
-  // /publish — run the courier: sanitize share:public cards → _public/_pending → approval
+  // /publish [topic] — courier sanitizes cards → _public/_pending for approval.
+  //   /publish            → only cards you marked `share: public`
+  //   /publish <topic>    → all cards in that topic (e.g. /publish travel)
   if (question.toLowerCase().startsWith('/publish')) {
+    const topic = question.replace(/^\/publish\s*/i, '').trim().toLowerCase();
     try {
-      await this.helpers.httpRequest({ method: 'POST', url: config.build_trigger_url + '/courier', timeout: 10000 });
-      return { answer: '📤 شغّلت الساعي. سأرسل لك معاينة كل بطاقة معلّمة share: public للموافقة خلال دقائق.' };
-    } catch(e) { return { answer: '❌ تعذّر تشغيل الساعي: ' + e.message }; }
+      await this.helpers.httpRequest({ method: 'POST', url: config.build_trigger_url + '/courier',
+        headers: { 'Content-Type': 'application/json' }, body: topic ? { topic } : {}, timeout: 10000 });
+      return { answer: topic
+        ? 'شغّلت الساعي على موضوع «' + topic + '». سأرسل لك معاينة كل بطاقة معقّمة للموافقة، ثم /approve ' + topic + ' أو /approve all.'
+        : 'شغّلت الساعي على البطاقات المعلّمة share: public. سأرسل المعاينات للموافقة.' };
+    } catch(e) { return { answer: 'تعذّر تشغيل الساعي: ' + e.message }; }
   }
 
-  // /approve <card> — move a sanitized pending card into _public (guests can then see it)
+  // /approve <card> | all | <topic> — move sanitized pending card(s) into _public
   if (question.toLowerCase().startsWith('/approve')) {
-    const name = question.replace(/^\/approve\s*/i, '').trim().replace(/^\[\[|\]\]$/g, '');
-    if (!name) return { answer: 'Usage: /approve <اسم-البطاقة>' };
-    const src = PUBLIC + '/_pending/' + name + '.md';
-    const dst = PUBLIC + '/' + name + '.md';
-    try {
-      if (!fs.existsSync(src)) return { answer: '❌ لا توجد بطاقة معلّقة بهذا الاسم: ' + name };
-      fs.copyFileSync(src, dst); fs.unlinkSync(src);
-      // prune from manifest
-      try { const mf = PUBLIC + '/_pending/_manifest.txt'; const lines = fs.readFileSync(mf,'utf8').split('\n').filter(l => l.trim() && l.trim() !== name); fs.writeFileSync(mf, lines.join('\n') + (lines.length?'\n':'')); } catch(e) {}
-      return { answer: '✅ نُشرت [[' + name + ']] — يراها الضيوف الآن في المحتوى العام.' };
-    } catch(e) { return { answer: '❌ خطأ: ' + e.message }; }
+    const arg = question.replace(/^\/approve\s*/i, '').trim().replace(/^\[\[|\]\]$/g, '');
+    if (!arg) return { answer: 'Usage: /approve <card> | /approve all | /approve <topic>' };
+    const pend = PUBLIC + '/_pending';
+    let pending = [];
+    try { pending = fs.readdirSync(pend).filter(f => f.endsWith('.md')); } catch(e) {}
+    if (pending.length === 0) return { answer: 'لا بطاقات معلّقة للنشر.' };
+    // decide which pending files to publish
+    let take = [];
+    if (arg.toLowerCase() === 'all') take = pending;
+    else if (pending.includes(arg + '.md')) take = [arg + '.md'];
+    else {
+      // treat arg as a topic: publish pending cards whose public-topics includes it
+      const t = arg.toLowerCase();
+      take = pending.filter(f => { try { const m = fs.readFileSync(pend + '/' + f,'utf8').match(/public-topics:\s*\[([^\]]*)\]/i); return m && m[1].toLowerCase().includes(t); } catch(e) { return false; } });
+    }
+    if (take.length === 0) return { answer: 'لا تطابق: ' + arg + '. المعلّق: ' + pending.map(f=>f.replace('.md','')).join('، ') };
+    let done = [];
+    for (const f of take) { try { fs.copyFileSync(pend + '/' + f, PUBLIC + '/' + f); fs.unlinkSync(pend + '/' + f); done.push(f.replace('.md','')); } catch(e) {} }
+    return { answer: 'نُشرت ' + done.length + ' بطاقة — يراها الضيوف الآن:\n' + done.map(n => '• ' + n).join('\n') };
   }
 
   // /reject <card> — discard a pending sanitized card
@@ -347,18 +361,28 @@ const guestGreetings = ['hi','hello','hey','مرحبا','هلا','السلام']
 if (guestGreetings.some(g => question.toLowerCase().startsWith(g))) {
   return { answer: 'أهلاً! اسأل عن المحتوى العام المتاح.' };
 }
-// answer strictly from _public/
+// answer strictly from _public/, and only cards whose public-topics match this guest's invited topics
+const myTopics = (guest.categories || []).map(c => String(c).toLowerCase().trim());
 let pubCards = [];
 try { pubCards = fs.readdirSync(PUBLIC).filter(f => f.endsWith('.md')); } catch(e) {}
-if (pubCards.length === 0) return { answer: 'لا يوجد محتوى عام متاح بعد.' };
-let ctx = '';
-for (const f of pubCards) { try { ctx += '\n\n=== ' + f.replace('.md','') + ' ===\n' + fs.readFileSync(PUBLIC + '/' + f, 'utf8').slice(0, 2000); } catch(e) {} }
+let ctx = '', shown = 0;
+for (const f of pubCards) {
+  let card = '';
+  try { card = fs.readFileSync(PUBLIC + '/' + f, 'utf8'); } catch(e) { continue; }
+  const tm = card.match(/public-topics:\s*\[([^\]]*)\]/i);
+  const cardTopics = tm ? tm[1].split(',').map(s => s.replace(/['"\s]/g, '').toLowerCase()).filter(Boolean) : [];
+  // a guest sees a card only if it is tagged with at least one of their invited topics
+  if (!cardTopics.some(t => myTopics.includes(t))) continue;
+  ctx += '\n\n=== ' + f.replace('.md','') + ' ===\n' + card.slice(0, 2000);
+  shown++;
+}
+if (shown === 0) return { answer: 'لا يوجد محتوى عام متاح في مواضيعك بعد: ' + myTopics.join('، ') };
 const gResp = await this.helpers.httpRequest({
   method: 'POST', url: 'https://api.groq.com/openai/v1/chat/completions',
   headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + config.groq_api_key },
   body: { model: 'llama-3.3-70b-versatile', temperature: 0.3, max_tokens: 600,
     frequency_penalty: 0.6, presence_penalty: 0.3, messages: [
-    { role: 'system', content: 'Knowledge assistant. Answer ONLY from the provided public content. Reply in the SAME language as the question. Concise: 2-5 sentences max, never repeat yourself.' },
+    { role: 'system', content: 'You answer guests on behalf of My Emperor Abdullah. BEGIN every answer by attributing it to him — start with "My Emperor Abdullah knows that…" / "My Emperor Abdullah thinks…" / "My Emperor Abdullah recommends…" (vary the verb: thinks / knows / says / recommends, whatever fits). In Arabic begin with "الإمبراطور عبدالله يرى…" / "يعرف الإمبراطور عبدالله…" / "يوصي الإمبراطور عبدالله…". Answer ONLY from the provided public content — never invent. Reply in the SAME language as the question. Concise: 2-5 sentences, no repetition, no emojis.' },
     { role: 'user', content: ctx.slice(0, 20000) + '\n\nQuestion: ' + question } ]
   }
 });

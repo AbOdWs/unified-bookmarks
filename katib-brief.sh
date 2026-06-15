@@ -32,14 +32,14 @@ if [ "$KIND" = "morning" ]; then
   last=$(grep -E "GAVE UP|rc [1-9]" /root/build-wiki.log 2>/dev/null | tail -1)
   [ -n "$last" ] && probs="${probs}\n• آخر بناء ويكي به مشكلة: ${last}"
   curl -s --max-time 5 http://localhost:8767/ >/dev/null 2>&1 || probs="${probs}\n• build-trigger لا يستجيب"
-  [ -n "$probs" ] && HEALTH="\n\n⚠️ <b>صحة النظام:</b>${probs}"
+  [ -n "$probs" ] && HEALTH="\n\n <b>صحة النظام:</b>${probs}"
 fi
 
 # deliver to Telegram as HTML (file stays clean Markdown for Obsidian; we convert on send)
 if [ -f "$OUT" ]; then
   TOKEN=$(python3 -c "import json;print(json.load(open('/root/config.json'))['telegram_bot_token'])")
   CHAT=$(python3 -c "import json;print(json.load(open('/root/config.json'))['telegram_chat_id'])")
-  HEAD=$([ "$KIND" = "morning" ] && echo "🌅 <b>موجز الصباح</b>" || echo "🌙 <b>ختام المساء</b>")
+  HEAD=$([ "$KIND" = "morning" ] && echo " <b>موجز الصباح</b>" || echo " <b>ختام المساء</b>")
   # strip YAML frontmatter, HTML-escape, **bold**->-<b>, drop leading # from headings
   BODY=$(perl -0777 -pe 's/^---\n.*?\n---\n//s' "$OUT" \
     | perl -pe 's/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g' \

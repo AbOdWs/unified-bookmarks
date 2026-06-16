@@ -11,11 +11,11 @@ CHAT = str(json.load(open("/root/config.json"))["telegram_chat_id"])
 SAUDI = datetime.timezone(datetime.timedelta(hours=3))
 # minutes-before-start to fire (per type)
 LEAD = {
-    "flight": [24*60, 3*60],
-    "hotel": [24*60, 0],
-    "restaurant": [120],
-    "attraction": [180],
-    "default": [120],
+    "flight": [14*1440, 7*1440, 3*1440, 1*1440, 3*60],   # 14d, 7d, 3d, 1d, 3h-before-departure
+    "hotel": [7*1440, 1*1440, 0],                          # 7d, 1d, at check-in
+    "restaurant": [180, 60],
+    "attraction": [1*1440, 180],
+    "default": [1*1440, 120],
 }
 
 

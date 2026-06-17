@@ -23,7 +23,10 @@ HELP = (
 "/del <id|all> — احذف حجزاً أو امسح الكل\n"
 "/car <الموقع> — احفظ موقع سيارتي  ·  /car — أين سيارتي\n"
 "/plan <مدينة> — خطّط يومي (من معرفتي ثم اقتراحات)\n"
-"/help — هذه القائمة\n"
+"\n— المصروفات —\n"
+"أرسل صورة إيصال أو الصق رسالة البنك وسأسجّلها في جدول الرحلة\n"
+"trip <اسم التبويب> — حدّد رحلة المصروفات الحالية (trip لعرضها)\n"
+"\n/help — هذه القائمة\n"
 "يمكن إرسال ملف PDF لتذكرة/حجز وسأقرأه."
 )
 
@@ -76,8 +79,21 @@ def countdown(start):
 # ---- expenses ----
 import base64
 
+EXP_TAB_FILE = "/root/travel/expense-tab.txt"
+
+def cur_tab():
+    try:
+        t = open(EXP_TAB_FILE).read().strip()
+        return t or EXP["tab"]
+    except Exception:
+        return EXP["tab"]
+
+def set_tab(name):
+    open(EXP_TAB_FILE, "w").write(name.strip())
+
 def exp_post(payload):
     payload["token"] = EXP["secret"]
+    payload["tab"] = cur_tab()
     data = json.dumps(payload).encode()
     try:
         r = urllib.request.urlopen(urllib.request.Request(EXP["webapp_url"], data=data,
@@ -157,7 +173,7 @@ def log_expense(d, settle=False):
     r = exp_post(fields)
     if r.get("ok"):
         where = "سُوّيت SAR في صف سابق" if r.get("settled") else f"أُضيف صف {r.get('added','')}"
-        line = f"سُجّل المصروف ({where}):\n{fields.get('item') or fields.get('seller')} — {amt} {cur}"
+        line = f"سُجّل المصروف ({where}) في [{r.get('tab', cur_tab())}]:\n{fields.get('item') or fields.get('seller')} — {amt} {cur}"
         if card: line += f" — {card}"
         say(line)
     else:
@@ -297,6 +313,12 @@ def handle(text, msg):
         cmd_car(arg_after("/car", "car", "سيارتي في", "سيارتي", "سيارة"))
     elif low.startswith(("/plan", "plan", "خطط", "خطّط")):
         cmd_plan(arg_after("/plan", "plan", "خطط يومي", "خطّط يومي", "خطط", "خطّط"))
+    elif low.startswith(("/trip", "trip", "رحلة الحالية", "/tab", "tab")):
+        name = arg_after("/trip", "trip", "/tab", "tab", "رحلة الحالية")
+        if name:
+            set_tab(name); say("رحلة المصروفات الحالية: " + name)
+        else:
+            say("رحلة المصروفات الحالية: " + cur_tab() + "\nللتغيير: trip <اسم التبويب>")
     elif low.startswith(("/exp", "exp", "مصروف", "expense")):
         log_expense(extract_sms(arg_after("/exp", "exp", "مصروف", "expense")), settle=False)
     else:

@@ -56,7 +56,8 @@ def groq(messages, max_tokens=700, temp=0.2, model="llama-3.3-70b-versatile"):
     body = json.dumps({"model": model, "temperature": temp,
                        "max_tokens": max_tokens, "messages": messages}).encode()
     req = urllib.request.Request("https://api.groq.com/openai/v1/chat/completions", data=body,
-                                 headers={"Content-Type": "application/json", "Authorization": "Bearer " + GROQ})
+                                 headers={"Content-Type": "application/json", "Authorization": "Bearer " + GROQ,
+                                          "User-Agent": "curl/8.0"})
     try:
         r = json.load(urllib.request.urlopen(req, timeout=60))
         return r["choices"][0]["message"]["content"].strip()

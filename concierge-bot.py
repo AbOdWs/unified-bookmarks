@@ -80,6 +80,26 @@ def countdown(start):
 import base64
 
 EXP_TAB_FILE = "/root/travel/expense-tab.txt"
+CARDMAP_FILE = "/root/travel/card-last4.json"
+
+BANK_SIGNALS = ["شراء", "نقاط بيع", "نقطة بيع", "مدى", "بطاقة", "مبلغ", "حسم", "خصم", "سحب", "عملية",
+                "شرائية", "purchase", "pos", "card ending", "ending", "debit", "transaction",
+                "الراجحي", "الأهلي", "الانماء", "الإنماء", "alinma", "amex", "urpay", "stcpay", "d360",
+                "barq", "mada", "apple pay", "نقاط", "ريال", "sar", "cny", "yuan", "يوان", "usd"]
+
+def looks_like_bank_sms(t):
+    low = t.lower()
+    if not re.search(r"\d[\d,]*\.?\d*", t):
+        return False
+    return sum(1 for s in BANK_SIGNALS if s in low) >= 2
+
+def card_map():
+    try: return json.load(open(CARDMAP_FILE))
+    except Exception: return dict(EXP.get("card_last4", {}))
+
+def set_card(last4, name):
+    m = card_map(); m[str(last4)] = name; json.dump(m, open(CARDMAP_FILE, "w"), ensure_ascii=False, indent=2)
+
 
 def cur_tab():
     try:
@@ -145,7 +165,7 @@ def extract_receipt(b64):
 def extract_sms(text):
     sysmsg = ("This is a bank SMS for a card transaction. Return ONLY JSON: "
               "{\"seller\":\"merchant\",\"date\":\"DD/MM\",\"amount\":number,\"currency\":\"one of allowed\","
-              "\"card\":\"one of allowed or empty\",\"notes\":\"\"}. " + EXP_RULES)
+              "\"card\":\"one of allowed or empty\",\"card4\":\"last 4 digits of the card if present, else empty\",\"notes\":\"\"}. " + EXP_RULES)
     resp = groq([{"role": "system", "content": sysmsg}, {"role": "user", "content": text[:1500]}], max_tokens=300)
     return parse_expense_json(resp)
 
@@ -156,6 +176,10 @@ def log_expense(d, settle=False):
         return
     cur = d.get("currency") if d.get("currency") in EXP["currencies"] else "SAR"
     card = d.get("card") if d.get("card") in EXP["cards"] else ""
+    card4 = re.sub(r"\D", "", str(d.get("card4") or ""))[-4:]
+    cmap = card_map()
+    if not card and card4 and card4 in cmap:
+        card = cmap[card4]
     amt = d.get("amount")
     fields = {"item": d.get("item", ""), "seller": d.get("seller", ""), "date": d.get("date", ""),
               "currency": cur, "card": card, "notes": d.get("notes", ""), "conversion": 0}
@@ -175,6 +199,7 @@ def log_expense(d, settle=False):
         where = "سُوّيت SAR في صف سابق" if r.get("settled") else f"أُضيف صف {r.get('added','')}"
         line = f"سُجّل المصروف ({where}) في [{r.get('tab', cur_tab())}]:\n{fields.get('item') or fields.get('seller')} — {amt} {cur}"
         if card: line += f" — {card}"
+        elif card4: line += f"\nالبطاقة المنتهية بـ {card4} غير معروفة — عرّفها مرة واحدة: card {card4} <اسم البطاقة>"
         say(line)
     else:
         say("تعذّر الكتابة إلى الجدول: " + str(r.get("error")))
@@ -309,6 +334,19 @@ def handle(text, msg):
         cmd_list()
     elif low.startswith(("/del", "del", "/travel delete", "travel delete", "احذف")):
         cmd_delete(arg_after("/travel delete", "travel delete", "/del", "del", "احذف"))
+    elif low.startswith("/card") or low.strip() == "card" or re.match(r"^/?card\s+\d", low):
+        rest = arg_after("/card", "card").strip()
+        parts = rest.split(None, 1)
+        if len(parts) >= 2 and re.search(r"\d", parts[0]):
+            # one card can have several last-4s (physical card + Apple Pay decoy): card 1234,5678 Amex
+            l4s = [re.sub(r"\D", "", x)[-4:] for x in re.split(r"[,\s]+", parts[0]) if re.sub(r"\D", "", x)]
+            for l4 in l4s:
+                set_card(l4, parts[1].strip())
+            say(f"رُبطت البطاقة ({parts[1].strip()}) بالأرقام: " + "، ".join(l4s))
+        else:
+            m = card_map()
+            say("بطاقاتك المعرّفة:\n" + ("\n".join(f"...{k} = {v}" for k, v in m.items()) if m else "لا شيء بعد.") +
+                "\n\nعرّف بطاقة: card <آخر 4> <اسم>\nيمكن إضافة أكثر من رقم لنفس البطاقة (الفعلي + Apple Pay): card 1234,5678 Amex")
     elif low.startswith(("/car", "car", "سيارة", "سيارتي")):
         cmd_car(arg_after("/car", "car", "سيارتي في", "سيارتي", "سيارة"))
     elif low.startswith(("/plan", "plan", "خطط", "خطّط")):
@@ -324,13 +362,16 @@ def handle(text, msg):
     else:
         body = arg_after("/travel", "travel", "حجز")
         raw = body if body else t
-        # classify free text: travel booking vs bank/expense SMS
-        kind = groq([{"role": "system", "content": "Classify the message as exactly one word: booking (flight/hotel/restaurant reservation confirmation), expense (a bank transaction SMS or purchase/payment notice), or other. One word only."},
-                     {"role": "user", "content": raw[:800]}], max_tokens=4, temp=0).lower()
-        if "expense" in kind:
-            log_expense(extract_sms(raw), settle=True)   # bank SMS settles/records SAR
+        # bank SMS detection is deterministic; only fall back to the classifier when unsure
+        if looks_like_bank_sms(raw):
+            log_expense(extract_sms(raw), settle=True)
         else:
-            ingest(raw)
+            kind = groq([{"role": "system", "content": "Classify the message as exactly one word: booking (flight/hotel/restaurant reservation confirmation), expense (a bank transaction or purchase/payment notice), or other. One word only."},
+                         {"role": "user", "content": raw[:800]}], max_tokens=4, temp=0).lower()
+            if "expense" in kind:
+                log_expense(extract_sms(raw), settle=True)
+            else:
+                ingest(raw)
 
 
 def main():

@@ -352,12 +352,15 @@ def handle(text, msg):
     elif low.startswith("/card") or low.strip() == "card" or re.match(r"^/?card\s+\d", low):
         rest = arg_after("/card", "card").strip()
         parts = rest.split(None, 1)
-        if len(parts) >= 2 and re.search(r"\d", parts[0]):
-            # one card can have several last-4s (physical card + Apple Pay decoy): card 1234,5678 Amex
-            l4s = [re.sub(r"\D", "", x)[-4:] for x in re.split(r"[,\s]+", parts[0]) if re.sub(r"\D", "", x)]
+        if len(parts) >= 2:
+            # strip angle brackets from name in case user typed <Amex> literally
+            name = parts[1].strip().strip("<>").strip()
+            # each token is a last-4 (digits only, or literal like xxxx for testing)
+            l4s = [re.sub(r"\D", "", x)[-4:] or x.strip() for x in re.split(r"[,،\s]+", parts[0]) if x.strip()]
+            l4s = [x for x in l4s if x]
             for l4 in l4s:
-                set_card(l4, parts[1].strip())
-            say(f"رُبطت البطاقة ({parts[1].strip()}) بالأرقام: " + "، ".join(l4s))
+                set_card(l4, name)
+            say(f"رُبطت البطاقة ({name}) بالأرقام: " + "، ".join(l4s))
         else:
             m = card_map()
             say("بطاقاتك المعرّفة:\n" + ("\n".join(f"...{k} = {v}" for k, v in m.items()) if m else "لا شيء بعد.") +

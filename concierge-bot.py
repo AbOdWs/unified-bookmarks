@@ -2,7 +2,7 @@
 # Travel Concierge — dedicated deterministic bot for My Emperor (owner-only).
 # Real slash commands (and bare keywords) that ALWAYS do exactly what they say.
 # Shares the store /root/travel/bookings.json with the reminder engine.
-import json, time, urllib.request, urllib.parse, re, subprocess, os, datetime, html
+import json, time, urllib.request, urllib.parse, re, subprocess, os, datetime, html, threading
 
 CFG = json.load(open("/root/config.json"))
 CC = json.load(open("/root/concierge.json"))          # {"telegram_bot_token": "..."}
@@ -167,7 +167,7 @@ def extract_receipt(b64):
         {"role": "user", "content": [
             {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b64}},
             {"type": "text", "text": sysmsg}]}
-    ], max_tokens=400, model="meta-llama/llama-4-scout-17b-16e-instruct")
+    ], max_tokens=400, model="meta-llama/llama-4-maverick-17b-128e-instruct")
     return parse_expense_json(resp)
 
 
@@ -181,7 +181,8 @@ def extract_sms(text):
               "For card4: extract ONLY the literal digits that appear after 'ending in' or 'ending with' in the SMS; if none found leave empty. "
               '{"seller":"merchant","date":"DD/MM","amount":number,"currency":"one of allowed",'
               '"card":"","card4":"digits only or empty","notes":""}. ' + EXP_RULES)
-    resp = groq([{"role": "system", "content": sysmsg}, {"role": "user", "content": text[:1500]}], max_tokens=300)
+    resp = groq([{"role": "system", "content": sysmsg}, {"role": "user", "content": text[:1500]}],
+                max_tokens=300, model="llama-3.1-8b-instant")
     return parse_expense_json(resp)
 
 
@@ -392,8 +393,52 @@ def handle(text, msg):
                 ingest(raw)
 
 
+def warmup():
+    try:
+        urllib.request.urlopen(urllib.request.Request(
+            EXP["webapp_url"] + "?token=" + EXP["secret"] + "&warmup=1",
+            headers={"User-Agent": "curl/8.0"}), timeout=10)
+    except Exception:
+        pass
+
+
+def dispatch(m):
+    doc = m.get("document")
+    if doc and (doc.get("mime_type") == "application/pdf" or str(doc.get("file_name", "")).lower().endswith(".pdf")):
+        say("جاري قراءة ملف الحجز...")
+        txt = read_pdf(doc["file_id"])
+        if txt: ingest(txt)
+        else: say("تعذّر قراءة ملف PDF.")
+        return
+    photo = m.get("photo")
+    if photo:
+        say("جاري قراءة الإيصال...")
+        b64 = photo_b64(photo[-1]["file_id"])
+        if b64: log_expense(extract_receipt(b64), settle=False)
+        else: say("تعذّر قراءة الصورة.")
+        return
+    text = m.get("text") or m.get("caption") or ""
+    if not text:
+        return
+    low = text.strip().lower()
+    # instant replies — no Groq needed
+    if low in ("/start", "/help", "help", "/travel help", "travel help", "/travel", "travel", "سفر", "مرشد"):
+        handle(text, m); return
+    if any(low.startswith(p) for p in ("/list", "list", "travel list", "حجوزاتي",
+                                        "/del", "del", "/travel delete", "travel delete", "احذف",
+                                        "/card", "/car", "car", "سيارة", "سيارتي",
+                                        "/plan", "plan", "خطط", "خطّط",
+                                        "/trip", "trip", "/tab", "tab")):
+        handle(text, m); return
+    # slow path (Groq + Sheets) — ack immediately then process in thread
+    say("جاري...")
+    threading.Thread(target=handle, args=(text, m), daemon=True).start()
+
+
 def main():
     tg("deleteWebhook")
+    # warm up Apps Script so first real call isn't cold
+    threading.Thread(target=warmup, daemon=True).start()
     st = load(STATE, {"offset": 0})
     while True:
         try:
@@ -404,26 +449,10 @@ def main():
                 m = u.get("message")
                 if not m or str(m.get("chat", {}).get("id")) != OWNER:
                     continue
-                doc = m.get("document")
-                if doc and (doc.get("mime_type") == "application/pdf" or str(doc.get("file_name", "")).lower().endswith(".pdf")):
-                    say("أقرأ ملف الحجز...")
-                    txt = read_pdf(doc["file_id"])
-                    if txt: ingest(txt)
-                    else: say("تعذّر قراءة ملف PDF.")
-                    continue
-                photo = m.get("photo")
-                if photo:
-                    say("أقرأ الإيصال...")
-                    b64 = photo_b64(photo[-1]["file_id"])     # largest size
-                    if b64: log_expense(extract_receipt(b64), settle=False)
-                    else: say("تعذّر قراءة الصورة.")
-                    continue
-                text = m.get("text") or m.get("caption") or ""
-                if text:
-                    handle(text, m)
+                threading.Thread(target=dispatch, args=(m,), daemon=True).start()
         except Exception:
             time.sleep(5)
-        time.sleep(1)
+        time.sleep(0.3)
 
 
 if __name__ == "__main__":

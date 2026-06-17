@@ -6,6 +6,7 @@ import json, time, urllib.request, urllib.parse, re, subprocess, os, datetime, h
 
 CFG = json.load(open("/root/config.json"))
 CC = json.load(open("/root/concierge.json"))          # {"telegram_bot_token": "..."}
+EXP = json.load(open("/root/expenses.json"))          # google-sheet connector
 TOKEN = CC["telegram_bot_token"]
 OWNER = str(CFG["telegram_chat_id"])
 GROQ = CFG["groq_api_key"]
@@ -48,8 +49,8 @@ def say(text):
     tg("sendMessage", chat_id=OWNER, text=text)
 
 
-def groq(messages, max_tokens=700, temp=0.2):
-    body = json.dumps({"model": "llama-3.3-70b-versatile", "temperature": temp,
+def groq(messages, max_tokens=700, temp=0.2, model="llama-3.3-70b-versatile"):
+    body = json.dumps({"model": model, "temperature": temp,
                        "max_tokens": max_tokens, "messages": messages}).encode()
     req = urllib.request.Request("https://api.groq.com/openai/v1/chat/completions", data=body,
                                  headers={"Content-Type": "application/json", "Authorization": "Bearer " + GROQ})
@@ -70,6 +71,97 @@ def countdown(start):
         return f"بعد {int(days)} يوم"
     except Exception:
         return ""
+
+
+# ---- expenses ----
+import base64
+
+def exp_post(payload):
+    payload["token"] = EXP["secret"]
+    data = json.dumps(payload).encode()
+    try:
+        r = urllib.request.urlopen(urllib.request.Request(EXP["webapp_url"], data=data,
+            headers={"Content-Type": "application/json"}), timeout=40)
+        return json.load(r)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def photo_b64(file_id):
+    info = tg("getFile", file_id=file_id)
+    path = info.get("result", {}).get("file_path")
+    if not path:
+        return ""
+    try:
+        raw = urllib.request.urlopen(f"https://api.telegram.org/file/bot{TOKEN}/{path}", timeout=40).read()
+        return base64.b64encode(raw).decode()
+    except Exception:
+        return ""
+
+
+EXP_RULES = ("Currencies allowed (use EXACTLY one): " + ", ".join(EXP["currencies"]) +
+             ". Cards allowed (use EXACTLY one of these or empty): " + ", ".join(EXP["cards"]) +
+             ". Date format DD/MM. Categories go in ITEM (short). Comply with the owner's privacy/values, no emojis.")
+
+
+def parse_expense_json(s):
+    m = re.search(r"\{[\s\S]*\}", s or "")
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(0))
+    except Exception:
+        return None
+
+
+def extract_receipt(b64):
+    sysmsg = ("Extract ONE expense from this receipt image. Return ONLY JSON: "
+              "{\"item\":\"short what it is\",\"seller\":\"merchant\",\"date\":\"DD/MM\",\"amount\":number,"
+              "\"currency\":\"one of allowed\",\"card\":\"one of allowed or empty\",\"notes\":\"\"}. " + EXP_RULES)
+    resp = groq([
+        {"role": "user", "content": [
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b64}},
+            {"type": "text", "text": sysmsg}]}
+    ], max_tokens=400, model="meta-llama/llama-4-scout-17b-16e-instruct")
+    return parse_expense_json(resp)
+
+
+def extract_sms(text):
+    sysmsg = ("This is a bank SMS for a card transaction. Return ONLY JSON: "
+              "{\"seller\":\"merchant\",\"date\":\"DD/MM\",\"amount\":number,\"currency\":\"one of allowed\","
+              "\"card\":\"one of allowed or empty\",\"notes\":\"\"}. " + EXP_RULES)
+    resp = groq([{"role": "system", "content": sysmsg}, {"role": "user", "content": text[:1500]}], max_tokens=300)
+    return parse_expense_json(resp)
+
+
+def log_expense(d, settle=False):
+    if not d or not d.get("amount"):
+        say("لم أستطع قراءة المبلغ. أعد الإرسال بوضوح أو أرسل النص يدوياً.")
+        return
+    cur = d.get("currency") if d.get("currency") in EXP["currencies"] else "SAR"
+    card = d.get("card") if d.get("card") in EXP["cards"] else ""
+    amt = d.get("amount")
+    fields = {"item": d.get("item", ""), "seller": d.get("seller", ""), "date": d.get("date", ""),
+              "currency": cur, "card": card, "notes": d.get("notes", ""), "conversion": 0}
+    if cur == "SAR":
+        fields["sar"] = amt; fields["other"] = 0
+        action = "add"
+    else:
+        fields["other"] = amt          # foreign: SAR stays pending until the bank settles
+        action = "add"
+    if settle:                          # a bank SMS settling a prior foreign purchase
+        fields["action"] = "settle"; fields["sar"] = amt
+        if cur == "SAR": fields["other"] = None
+    else:
+        fields["action"] = action
+    r = exp_post(fields)
+    if r.get("ok"):
+        where = "سُوّيت SAR في صف سابق" if r.get("settled") else f"أُضيف صف {r.get('added','')}"
+        line = f"سُجّل المصروف ({where}):\n{fields.get('item') or fields.get('seller')} — {amt} {cur}"
+        if card: line += f" — {card}"
+        say(line)
+    else:
+        say("تعذّر الكتابة إلى الجدول: " + str(r.get("error")))
 
 
 # ---- commands ----
@@ -205,10 +297,18 @@ def handle(text, msg):
         cmd_car(arg_after("/car", "car", "سيارتي في", "سيارتي", "سيارة"))
     elif low.startswith(("/plan", "plan", "خطط", "خطّط")):
         cmd_plan(arg_after("/plan", "plan", "خطط يومي", "خطّط يومي", "خطط", "خطّط"))
+    elif low.startswith(("/exp", "exp", "مصروف", "expense")):
+        log_expense(extract_sms(arg_after("/exp", "exp", "مصروف", "expense")), settle=False)
     else:
-        # treat anything else (incl. /travel <text> or a pasted/forwarded confirmation) as a booking to ingest
         body = arg_after("/travel", "travel", "حجز")
-        ingest(body if body else t)
+        raw = body if body else t
+        # classify free text: travel booking vs bank/expense SMS
+        kind = groq([{"role": "system", "content": "Classify the message as exactly one word: booking (flight/hotel/restaurant reservation confirmation), expense (a bank transaction SMS or purchase/payment notice), or other. One word only."},
+                     {"role": "user", "content": raw[:800]}], max_tokens=4, temp=0).lower()
+        if "expense" in kind:
+            log_expense(extract_sms(raw), settle=True)   # bank SMS settles/records SAR
+        else:
+            ingest(raw)
 
 
 def main():
@@ -229,6 +329,13 @@ def main():
                     txt = read_pdf(doc["file_id"])
                     if txt: ingest(txt)
                     else: say("تعذّر قراءة ملف PDF.")
+                    continue
+                photo = m.get("photo")
+                if photo:
+                    say("أقرأ الإيصال...")
+                    b64 = photo_b64(photo[-1]["file_id"])     # largest size
+                    if b64: log_expense(extract_receipt(b64), settle=False)
+                    else: say("تعذّر قراءة الصورة.")
                     continue
                 text = m.get("text") or m.get("caption") or ""
                 if text:

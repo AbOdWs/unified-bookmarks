@@ -144,8 +144,16 @@ def parse_expense_json(s):
     m = re.search(r"\{[\s\S]*\}", s or "")
     if not m:
         return None
+    txt = re.sub(r"(?<=\d),(?=\d{3}\b)", "", m.group(0))   # strip thousands separators (4,424 -> 4424)
     try:
-        return json.loads(m.group(0))
+        return json.loads(txt)
+    except Exception:
+        return None
+
+
+def to_amount(v):
+    try:
+        return float(re.sub(r"[^\d.]", "", str(v)))
     except Exception:
         return None
 
@@ -163,15 +171,20 @@ def extract_receipt(b64):
 
 
 def extract_sms(text):
-    sysmsg = ("This is a bank SMS for a card transaction. Return ONLY JSON: "
+    sysmsg = ("This is a bank SMS for a card transaction. Extract the PURCHASE: the amount charged at the "
+              "merchant and ITS currency — IGNORE balance, available limit, fees, and exchange rate. "
+              "If both a local amount and a card-billing amount appear, use the amount actually charged at the "
+              "merchant (e.g. 'used at X for : SAR 4424' -> amount 4424, currency SAR). "
+              "Return ONLY JSON with amount as a plain number (no commas, no currency word): "
               "{\"seller\":\"merchant\",\"date\":\"DD/MM\",\"amount\":number,\"currency\":\"one of allowed\","
-              "\"card\":\"one of allowed or empty\",\"card4\":\"last 4 digits of the card if present, else empty\",\"notes\":\"\"}. " + EXP_RULES)
+              "\"card\":\"one of allowed or empty\",\"card4\":\"last 4 digits/chars after 'ending in' if present, else empty\",\"notes\":\"\"}. " + EXP_RULES)
     resp = groq([{"role": "system", "content": sysmsg}, {"role": "user", "content": text[:1500]}], max_tokens=300)
     return parse_expense_json(resp)
 
 
 def log_expense(d, settle=False):
-    if not d or not d.get("amount"):
+    amt = to_amount(d.get("amount")) if d else None
+    if not amt:
         say("لم أستطع قراءة المبلغ. أعد الإرسال بوضوح أو أرسل النص يدوياً.")
         return
     cur = d.get("currency") if d.get("currency") in EXP["currencies"] else "SAR"
@@ -180,7 +193,6 @@ def log_expense(d, settle=False):
     cmap = card_map()
     if not card and card4 and card4 in cmap:
         card = cmap[card4]
-    amt = d.get("amount")
     fields = {"item": d.get("item", ""), "seller": d.get("seller", ""), "date": d.get("date", ""),
               "currency": cur, "card": card, "notes": d.get("notes", ""), "conversion": 0}
     if cur == "SAR":

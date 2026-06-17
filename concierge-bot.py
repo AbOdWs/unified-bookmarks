@@ -176,9 +176,11 @@ def extract_sms(text):
               "merchant and ITS currency — IGNORE balance, available limit, fees, and exchange rate. "
               "If both a local amount and a card-billing amount appear, use the amount actually charged at the "
               "merchant (e.g. 'used at X for : SAR 4424' -> amount 4424, currency SAR). "
-              "Return ONLY JSON with amount as a plain number (no commas, no currency word): "
-              "{\"seller\":\"merchant\",\"date\":\"DD/MM\",\"amount\":number,\"currency\":\"one of allowed\","
-              "\"card\":\"one of allowed or empty\",\"card4\":\"last 4 digits/chars after 'ending in' if present, else empty\",\"notes\":\"\"}. " + EXP_RULES)
+              "Return ONLY JSON with amount as a plain number (no commas, no currency word). "
+              "For card: ALWAYS leave it empty string — card name is resolved separately. "
+              "For card4: extract ONLY the literal digits that appear after 'ending in' or 'ending with' in the SMS; if none found leave empty. "
+              '{"seller":"merchant","date":"DD/MM","amount":number,"currency":"one of allowed",'
+              '"card":"","card4":"digits only or empty","notes":""}. ' + EXP_RULES)
     resp = groq([{"role": "system", "content": sysmsg}, {"role": "user", "content": text[:1500]}], max_tokens=300)
     return parse_expense_json(resp)
 

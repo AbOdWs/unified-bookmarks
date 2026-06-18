@@ -1,5 +1,5 @@
 <svg width="1280" height="420" viewBox="0 0 1280 420" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
-  <title id="title">Hermes Personal Knowledge Brain</title>
+  <title id="title">Unified Bookmarks</title>
   <desc id="desc">A banner for a self-hosted Telegram, WhatsApp, n8n, and Obsidian personal knowledge system.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="420" gradientUnits="userSpaceOnUse">
@@ -35,7 +35,7 @@
   <g filter="url(#shadow)">
     <rect x="78" y="76" width="770" height="268" rx="28" fill="#0B1220" fill-opacity="0.72" stroke="#334155"/>
     <text x="116" y="144" fill="#67E8F9" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="700" letter-spacing="3">HERMES</text>
-    <text x="116" y="200" fill="#F8FAFC" font-family="Inter, Arial, sans-serif" font-size="48" font-weight="800">Personal Knowledge Brain</text>
+    <text x="116" y="200" fill="#F8FAFC" font-family="Inter, Arial, sans-serif" font-size="48" font-weight="800">Unified Bookmarks</text>
     <text x="116" y="246" fill="#CBD5E1" font-family="Inter, Arial, sans-serif" font-size="23">Telegram · WhatsApp · n8n · Groq · Obsidian</text>
     <text x="116" y="290" fill="#A7F3D0" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="700">Save anything. Ask later.</text>
     <text x="790" y="292" direction="rtl" unicode-bidi="bidi-override" text-anchor="end" fill="#E0F2FE" font-family="Arial, Tahoma, sans-serif" font-size="23">احفظ أي شيء واسأل عنه لاحقاً</text>

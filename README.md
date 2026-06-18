@@ -1,8 +1,8 @@
-![Hermes Personal Knowledge Brain](github_banner.svg)
+![Unified Bookmarks](github_banner.svg)
 
-# Hermes Personal Knowledge Brain
+# Unified Bookmarks
 
-A self-hosted personal knowledge brain for Telegram, WhatsApp, and Obsidian. Send links, voice notes, or images. Hermes summarizes them, organizes them into Markdown, and lets you ask about them later.
+A self-hosted unified bookmarks system for Telegram, WhatsApp, and Obsidian. Send links, voice notes, or images. Hermes summarizes them, organizes them into Markdown, and lets you ask about them later.
 
 Built by **Abdullah Altamimi** · [X @AbOd](https://x.com/AbOd) · [First iPhone app: Aish Awfar](https://apps.abod.ws/aish)
 

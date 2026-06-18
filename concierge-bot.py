@@ -178,9 +178,11 @@ def extract_sms(text):
               "merchant (e.g. 'used at X for : SAR 4424' -> amount 4424, currency SAR). "
               "Return ONLY JSON with amount as a plain number (no commas, no currency word). "
               "For card: ALWAYS leave it empty string — card name is resolved separately. "
-              "For card4: extract ONLY the literal digits that appear after 'ending in' or 'ending with' in the SMS; if none found leave empty. "
+              "For card4: find the last 4 card digits from ANY pattern: "
+              "'ending in XXXX', '**XXXX', '* XXXX', 'بطاقة XXXX', 'card XXXX', or any 4-digit group preceded by * or ** or # that looks like a masked card suffix. "
+              "Return ONLY the 4 digits, nothing else. If none found leave empty string. "
               '{"seller":"merchant","date":"DD/MM","amount":number,"currency":"one of allowed",'
-              '"card":"","card4":"digits only or empty","notes":""}. ' + EXP_RULES)
+              '"card":"","card4":"4 digits or empty","notes":""}. ' + EXP_RULES)
     resp = groq([{"role": "system", "content": sysmsg}, {"role": "user", "content": text[:1500]}],
                 max_tokens=300, model="llama-3.1-8b-instant")
     return parse_expense_json(resp)
@@ -214,8 +216,11 @@ def log_expense(d, settle=False):
     if r.get("ok"):
         where = "سُوّيت SAR في صف سابق" if r.get("settled") else f"أُضيف صف {r.get('added','')}"
         line = f"سُجّل المصروف ({where}) في [{r.get('tab', cur_tab())}]:\n{fields.get('item') or fields.get('seller')} — {amt} {cur}"
-        if card: line += f" — {card}"
-        elif card4: line += f"\nالبطاقة المنتهية بـ {card4} غير معروفة — عرّفها مرة واحدة: card {card4} <اسم البطاقة>"
+        if card:
+            line += f" — {card}"
+        else:
+            hint = card4 if card4 else "؟؟؟؟"
+            line += f"\nبطاقة غير معروفة ({hint}) — سجّلها مرة واحدة: card {hint} <اسم البطاقة>"
         say(line)
     else:
         say("تعذّر الكتابة إلى الجدول: " + str(r.get("error")))

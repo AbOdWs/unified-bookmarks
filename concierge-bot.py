@@ -17,18 +17,52 @@ KN = "/root/knowledge"
 SAUDI = datetime.timezone(datetime.timedelta(hours=3))
 
 HELP = (
-"أوامر المرشد السياحي:\n"
-"/travel <نص الحجز>  أو  حوّل/الصق تأكيد حجز — يضيفه (طيران/فندق/مطعم/معلم)\n"
+"— الحجوزات —\n"
+"/travel <نص>  أو الصق/أرسل PDF — أضف حجز (طيران/فندق/مطعم/معلم)\n"
 "/list — حجوزاتي والعدّ التنازلي\n"
 "/del <id|all> — احذف حجزاً أو امسح الكل\n"
 "/car <الموقع> — احفظ موقع سيارتي  ·  /car — أين سيارتي\n"
-"/plan <مدينة> — خطّط يومي (من معرفتي ثم اقتراحات)\n"
+"/plan <مدينة> — خطّط يومي (معرفتي + اقتراحات)\n"
 "\n— المصروفات —\n"
-"أرسل صورة إيصال أو الصق رسالة البنك وسأسجّلها في جدول الرحلة\n"
-"trip <اسم التبويب> — حدّد رحلة المصروفات الحالية (trip لعرضها)\n"
-"\n/help — هذه القائمة\n"
-"يمكن إرسال ملف PDF لتذكرة/حجز وسأقرأه."
+"/expense — أدخل مصروفاً يدوياً (قالب جاهز)\n"
+"/card <آخر4[,آخر4]> <اسم> — سجّل بطاقة · /card لعرض البطاقات\n"
+"/trip <اسم التبويب> — بدّل رحلة المصروفات · /trip لعرض الحالية\n"
+"صورة إيصال أو رسالة بنك — يُسجَّل تلقائياً\n"
+"\n/help — هذه القائمة"
 )
+
+EXPENSE_TEMPLATE = (
+"أرسل هذا النموذج بعد تعبئته:\n\n"
+"ITEM: \n"
+"SELLER: \n"
+"DATE: DD/MM\n"
+"AMOUNT: \n"
+"CURRENCY: SAR\n"
+"CARD: "
+)
+
+def parse_expense_template(text):
+    fields = {}
+    for line in text.strip().splitlines():
+        if ":" in line:
+            k, _, v = line.partition(":")
+            fields[k.strip().upper()] = v.strip()
+    required = {"ITEM", "SELLER", "DATE", "AMOUNT", "CURRENCY"}
+    if not required.issubset(fields.keys()):
+        return None
+    try:
+        amt = float(re.sub(r"[^\d.]", "", fields["AMOUNT"]))
+    except Exception:
+        return None
+    cur = fields["CURRENCY"].upper()
+    if cur not in EXP["currencies"]:
+        cur = "SAR"
+    card = fields.get("CARD", "").strip()
+    if card not in EXP["cards"]:
+        card = ""
+    return {"item": fields["ITEM"], "seller": fields["SELLER"],
+            "date": fields["DATE"], "amount": amt,
+            "currency": cur, "card": card, "card4": "", "notes": ""}
 
 
 def tg(method, **p):
@@ -381,11 +415,18 @@ def handle(text, msg):
             set_tab(name); say("رحلة المصروفات الحالية: " + name)
         else:
             say("رحلة المصروفات الحالية: " + cur_tab() + "\nللتغيير: trip <اسم التبويب>")
+    elif low.strip() in ("/expense", "expense", "/exp", "مصروف يدوي"):
+        say(EXPENSE_TEMPLATE)
     elif low.startswith(("/exp", "exp", "مصروف", "expense")):
         log_expense(extract_sms(arg_after("/exp", "exp", "مصروف", "expense")), settle=False)
     else:
         body = arg_after("/travel", "travel", "حجز")
         raw = body if body else t
+        # filled manual template (ITEM:/SELLER:/DATE:/AMOUNT:/CURRENCY:) — deterministic, no LLM
+        tmpl = parse_expense_template(raw)
+        if tmpl:
+            log_expense(tmpl, settle=False)
+            return
         # bank SMS detection is deterministic; only fall back to the classifier when unsure
         if looks_like_bank_sms(raw):
             log_expense(extract_sms(raw), settle=True)
@@ -433,7 +474,8 @@ def dispatch(m):
                                         "/del", "del", "/travel delete", "travel delete", "احذف",
                                         "/card", "/car", "car", "سيارة", "سيارتي",
                                         "/plan", "plan", "خطط", "خطّط",
-                                        "/trip", "trip", "/tab", "tab")):
+                                        "/trip", "trip", "/tab", "tab",
+                                        "/expense", "/exp")):
         handle(text, m); return
     # slow path (Groq + Sheets) — ack immediately then process in thread
     say("جاري...")

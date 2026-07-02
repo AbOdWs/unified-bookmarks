@@ -1,0 +1,405 @@
+{
+  "updatedAt": "2026-05-30T16:23:36.021Z",
+  "createdAt": "2026-05-22T21:48:02.894Z",
+  "id": "th6yWV4feEoh3Qwp",
+  "name": "Hermes AbOdLinks Agent",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "b01d49a4-2dec-4cc8-bce3-bf9b6ed5190c",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        1216,
+        1280
+      ],
+      "webhookId": "hermes-knowledge-v2",
+      "credentials": {
+        "telegramApi": {
+          "id": "G9A8UobfuuHMD4wC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-url",
+              "leftValue": "={{ $json.message.text }}",
+              "rightValue": "^https?://[^\\s]+$",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cc000e70-a392-4b5a-aa99-af689d2f0987",
+      "name": "Is it a URL?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2064,
+        1152
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst config = JSON.parse(fs.readFileSync('/home/node/config.json', 'utf8'));\n\nconst result = $('Save Link').item.json;\nconst chatId = $('Telegram Trigger').item.json.message.chat.id;\n\nlet text;\nif (result.duplicate) {\n  const originalText = $('Telegram Trigger').item.json.message.text || '';\n  if (originalText.includes('/tag')) return { skipped: true };\n  text = '⚠️ هذا الرابط محفوظ من قبل';\n} else if (!result.success) {\n  text = '❌ فشل الحفظ' + (result.fetchError ? '\\n' + result.fetchError : '');\n} else if (result.itemType === 'video' && result.contentDepth === 'metadata-only') {\n  text = 'حُفظ ✅ — وصف فقط، بدون نص الفيديو\\n\\n📌 ' + result.title + '\\n📁 ' + result.file;\n} else if (!result.gotContent) {\n  text = 'حُفظ ✅ — الرابط فقط، تعذّر جلب المحتوى\\n\\n📁 ' + result.file + (result.fetchError ? '\\n⚠️ ' + result.fetchError : '');\n} else {\n  text = 'حُفظ ✅\\n\\n📌 ' + result.title + '\\n📁 ' + result.file;\n}\n\nawait this.helpers.httpRequest({\n  method: 'POST',\n  url: 'https://api.telegram.org/bot' + config.telegram_bot_token + '/sendMessage',\n  headers: { 'Content-Type': 'application/json' },\n  body: { chat_id: chatId, text: text }\n});\n\nreturn { sent: true };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2688,
+        960
+      ],
+      "id": "8eca3c97-2f5f-4ba9-92e7-104560e6b564",
+      "name": "Reply:Saved"
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst config = JSON.parse(fs.readFileSync('/home/node/config.json', 'utf8'));\n\n// Parse URL and personal note from message\nconst fullText = ($('Message buffer').item.json.message?.text || $('Telegram Trigger').item.json.message?.text || '').trim();\nconst urlMatch = fullText.match(/https?:\\/\\/[^\\s]+/);\nif (fullText.includes('/tag')) return [];\nconst originalUrl = urlMatch[0];\nconst rawNote = fullText.replace(originalUrl, '').trim();\n\n// Reminder instruction\nconst remindMatch = rawNote.match(/\\/remind\\s+(\\d+)(day|days|week|weeks|month|months)/i);\nlet reminderDate = null;\nlet personalNote = rawNote.replace(/\\/remind\\s+\\S+/i, '').trim();\nif (remindMatch) {\n  const amount = parseInt(remindMatch[1]);\n  const unit = remindMatch[2].toLowerCase();\n  const d = new Date();\n  if (unit.startsWith('day')) d.setDate(d.getDate() + amount);\n  else if (unit.startsWith('week')) d.setDate(d.getDate() + amount * 7);\n  else if (unit.startsWith('month')) d.setMonth(d.getMonth() + amount);\n  reminderDate = d.toISOString().split('T')[0];\n}\n\n// Helper: remember last URL for /tag this\nfunction storeLastUrl() {\n  try {\n    let buf = {};\n    try { buf = JSON.parse(fs.readFileSync(config.message_buffer_file, 'utf8')); } catch(e) {}\n    buf[String($('Telegram Trigger').item.json.message.chat.id) + '_last_url'] = originalUrl;\n    fs.writeFileSync(config.message_buffer_file, JSON.stringify(buf), 'utf8');\n  } catch(e) {}\n}\n\n// Duplicate check across all of raw/ (recursive)\nfunction findUrlIn(dir) {\n  let entries = [];\n  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch(e) { return false; }\n  for (const ent of entries) {\n    const p = dir + '/' + ent.name;\n    if (ent.isDirectory()) { if (findUrlIn(p)) return true; }\n    else if (ent.name.endsWith('.md')) {\n      try { if (fs.readFileSync(p, 'utf8').includes(originalUrl)) return true; } catch(e) {}\n    }\n  }\n  return false;\n}\nif (findUrlIn(config.knowledge_dir + '/raw')) {\n  storeLastUrl();\n  return { success: false, duplicate: true, message: 'Already saved this link before' };\n}\n\nconst videoPatterns = ['tiktok.com', 'youtube.com', 'youtu.be', 'instagram.com'];\nconst isVideo = videoPatterns.some(p => originalUrl.includes(p));\nconst isTelegram = originalUrl.includes('t.me/');\nconst isTwitter = originalUrl.includes('x.com') || originalUrl.includes('twitter.com');\nconst isReddit = originalUrl.includes('reddit.com') || originalUrl.includes('redd.it');\n\nlet pageContent = '';\nlet contentDepth = 'metadata-only';\nlet fetchError = '';\nlet pageTitle = '';\nlet itemType = isVideo ? 'video' : 'link';\n\n// --- Video: deep extraction via ytdlp API (captions, else Whisper) ---\nif (isVideo) {\n  try {\n    const ytResponse = await this.helpers.httpRequest({\n      method: 'GET',\n      url: config.ytdlp_api_url + '/' + encodeURIComponent(originalUrl),\n      timeout: 540000\n    });\n    pageContent = ytResponse.content || '';\n    contentDepth = ytResponse.content_depth || (pageContent ? 'metadata-only' : 'metadata-only');\n    pageTitle = ytResponse.title || '';\n    if (ytResponse.error) fetchError = String(ytResponse.error);\n  } catch(e) {\n    fetchError = 'ytdlp API: ' + e.message;\n  }\n}\n\n// --- X.com via oEmbed ---\nif (isTwitter) {\n  try {\n    const oembedResponse = await this.helpers.httpRequest({\n      method: 'GET',\n      url: 'https://publish.twitter.com/oembed?url=' + encodeURIComponent(originalUrl) + '&omit_script=true',\n      timeout: 10000\n    });\n    const html = oembedResponse.html || '';\n    pageContent = html.replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ').trim();\n    if (oembedResponse.author_name) pageContent = 'Author: ' + oembedResponse.author_name + ' | ' + pageContent;\n    if (pageContent) contentDepth = 'full';\n  } catch(e) {\n    fetchError = 'oEmbed: ' + e.message;\n  }\n}\n\n// --- Reddit: info from URL only ---\nif (isReddit && !pageContent) {\n  const subredditMatch = originalUrl.match(/reddit\\.com\\/r\\/([^\\/]+)/);\n  const slugMatch = originalUrl.match(/comments\\/[^\\/]+\\/([^\\/\\?]+)/);\n  const subreddit = subredditMatch ? subredditMatch[1] : '';\n  const slug = slugMatch ? slugMatch[1].replace(/_/g, ' ') : '';\n  pageContent = 'Reddit post' + (subreddit ? ' in r/' + subreddit : '') + (slug ? ': ' + slug : '');\n}\n\n// --- Telegram post via Bot API ---\nif (isTelegram) {\n  try {\n    const tgMatch = originalUrl.match(/t\\.me\\/(?:c\\/)?([^\\/]+)\\/(\\d+)/);\n    if (tgMatch) {\n      const chatId = tgMatch[1].startsWith('c/') ? '-100' + tgMatch[1] : '@' + tgMatch[1];\n      const tgResponse = await this.helpers.httpRequest({\n        method: 'GET',\n        url: 'https://api.telegram.org/bot' + config.telegram_bot_token + '/forwardMessage',\n        body: { chat_id: config.telegram_chat_id, from_chat_id: chatId, message_id: parseInt(tgMatch[2]) }\n      });\n      pageContent = tgResponse?.result?.text || tgResponse?.result?.caption || '';\n      if (pageContent) contentDepth = 'full';\n    }\n  } catch(e) {\n    fetchError = 'telegram: ' + e.message;\n  }\n}\n\n// --- Articles/pages: Firecrawl, then raw-HTML fallback ---\nif (!isVideo && !isTelegram && !isTwitter && !isReddit) {\n  try {\n    const crawlResponse = await this.helpers.httpRequest({\n      method: 'POST',\n      url: 'https://api.firecrawl.dev/v1/scrape',\n      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + config.firecrawl_api_key },\n      body: { url: originalUrl, formats: ['markdown'], onlyMainContent: true },\n      timeout: 30000\n    });\n    pageContent = (crawlResponse?.data?.markdown || crawlResponse?.markdown || '').slice(0, 20000);\n    pageTitle = crawlResponse?.data?.metadata?.title || '';\n    if (pageContent) contentDepth = 'full';\n  } catch(e) {\n    fetchError = 'firecrawl: ' + e.message;\n  }\n  if (!pageContent) {\n    // Fallback: plain HTML fetch, strip tags\n    try {\n      const htmlResp = await this.helpers.httpRequest({\n        method: 'GET', url: originalUrl, timeout: 20000,\n        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; knowledge-bot)' }\n      });\n      const html = String(htmlResp || '');\n      const titleMatch = html.match(/<title[^>]*>([^<]*)<\\/title>/i);\n      if (titleMatch) pageTitle = titleMatch[1].trim();\n      pageContent = html\n        .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n        .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n        .replace(/<[^>]*>/g, ' ')\n        .replace(/\\s+/g, ' ')\n        .trim()\n        .slice(0, 20000);\n      if (pageContent.length > 200) {\n        contentDepth = 'full';\n        fetchError = '';\n      }\n    } catch(e2) {\n      fetchError = fetchError + ' | html fallback: ' + e2.message;\n    }\n  }\n}\n\n// --- Write one file per item to raw/inbox (capture is intentionally dumb: no LLM) ---\nconst now = new Date();\nconst pad = n => String(n).padStart(2, '0');\nconst stamp = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes());\nconst slugSource = pageTitle || originalUrl.replace(/https?:\\/\\/(www\\.)?/, '');\nconst slug = slugSource.toLowerCase()\n  .replace(/[^a-z0-9؀-ۿ]+/g, '-')\n  .replace(/^-+|-+$/g, '')\n  .slice(0, 60) || 'link';\n\nconst inboxDir = config.knowledge_dir + '/raw/inbox';\nfs.mkdirSync(inboxDir, { recursive: true });\nlet filename = stamp + '-' + slug + '.md';\nlet filepath = inboxDir + '/' + filename;\nlet counter = 1;\nwhile (fs.existsSync(filepath)) {\n  filename = stamp + '-' + slug + '-' + (++counter) + '.md';\n  filepath = inboxDir + '/' + filename;\n}\n\nconst fm = [\n  '---',\n  'agent: ورّاق',\n  'captured: ' + now.toISOString(),\n  'type: ' + itemType,\n  'source: ' + originalUrl,\n  'content-depth: ' + contentDepth,\n  pageTitle ? 'title: \"' + pageTitle.replace(/\"/g, \"'\") + '\"' : null,\n  fetchError ? 'fetch-error: \"' + fetchError.replace(/\"/g, \"'\").slice(0, 200) + '\"' : null,\n  '---',\n].filter(Boolean).join('\\n');\n\nconst noteSection = personalNote ? '\\n**My note:** ' + personalNote + '\\n' : '';\nconst reminderSection = reminderDate ? '\\n**Reminder:** ' + reminderDate + '\\n' : '';\nconst body = fm + '\\n\\n# ' + (pageTitle || originalUrl) + '\\n\\nSource: ' + originalUrl + '\\n' + noteSection + reminderSection + '\\n' + (pageContent || '_(no content could be fetched)_') + '\\n';\n\nfs.writeFileSync(filepath, body, 'utf8');\nstoreLastUrl();\n\nreturn {\n  success: true,\n  file: 'raw/inbox/' + filename,\n  title: pageTitle || originalUrl,\n  itemType,\n  contentDepth,\n  fetchError,\n  gotContent: !!pageContent,\n  url: originalUrl\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2480,
+        960
+      ],
+      "id": "bfbb01e3-0d5b-431a-be22-2f6dc62e1b34",
+      "name": "Save Link"
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst config = JSON.parse(fs.readFileSync('/home/node/config.json', 'utf8'));\n\nconst message = $('Telegram Trigger').item.json.message;\nif (!message.voice && !message.audio) return [];\n\nconst fileId = message.voice?.file_id || message.audio?.file_id;\nconst chatId = message.chat.id;\n\n// Get file path from Telegram\nconst fileInfo = await this.helpers.httpRequest({\n  method: 'GET',\n  url: 'https://api.telegram.org/bot' + config.telegram_bot_token + '/getFile?file_id=' + fileId\n});\nconst filePath = fileInfo.result.file_path;\nconst fileUrl = 'https://api.telegram.org/file/bot' + config.telegram_bot_token + '/' + filePath;\n\n// Send to local Whisper API\nlet text = '';\nlet transcribeError = '';\ntry {\n  const result = await this.helpers.httpRequest({\n    method: 'POST',\n    url: config.whisper_api_url,\n    headers: { 'Content-Type': 'application/json' },\n    body: { url: fileUrl, key: config.groq_api_key },\n    timeout: 120000\n  });\n  text = result.text || '';\n  if (result.error) transcribeError = String(result.error);\n} catch(e) {\n  transcribeError = e.message;\n}\n\n// Reminder detection in transcribed text\nconst remindMatch = text.match(/\\/remind\\s+(\\d+)(day|days|week|weeks|month|months)/i);\nlet reminderDate = null;\nlet cleanText = text.replace(/\\/remind\\s+\\S+/i, '').trim();\nif (remindMatch) {\n  const amount = parseInt(remindMatch[1]);\n  const unit = remindMatch[2].toLowerCase();\n  const d = new Date();\n  if (unit.startsWith('day')) d.setDate(d.getDate() + amount);\n  else if (unit.startsWith('week')) d.setDate(d.getDate() + amount * 7);\n  else if (unit.startsWith('month')) d.setMonth(d.getMonth() + amount);\n  reminderDate = d.toISOString().split('T')[0];\n}\n\n// One file per item in raw/inbox\nconst now = new Date();\nconst pad = n => String(n).padStart(2, '0');\nconst stamp = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes());\nconst slug = (cleanText || 'voice-note').toLowerCase()\n  .replace(/[^a-z0-9؀-ۿ]+/g, '-')\n  .replace(/^-+|-+$/g, '')\n  .slice(0, 40) || 'voice-note';\n\nconst inboxDir = config.knowledge_dir + '/raw/inbox';\nfs.mkdirSync(inboxDir, { recursive: true });\nlet filename = stamp + '-voice-' + slug + '.md';\nlet filepathOut = inboxDir + '/' + filename;\nlet counter = 1;\nwhile (fs.existsSync(filepathOut)) {\n  filename = stamp + '-voice-' + slug + '-' + (++counter) + '.md';\n  filepathOut = inboxDir + '/' + filename;\n}\n\nconst fm = [\n  '---',\n  'agent: ورّاق',\n  'captured: ' + now.toISOString(),\n  'type: voice',\n  'source: telegram-voice',\n  'content-depth: ' + (cleanText ? 'transcript' : 'metadata-only'),\n  transcribeError ? 'fetch-error: \"' + transcribeError.replace(/\"/g, \"'\").slice(0, 200) + '\"' : null,\n  '---',\n].filter(Boolean).join('\\n');\n\nconst reminderSection = reminderDate ? '\\n**Reminder:** ' + reminderDate + '\\n' : '';\nconst body = fm + '\\n\\n# 🎤 Voice note — ' + stamp + '\\n' + reminderSection + '\\n' + (cleanText || '_(transcription failed)_') + '\\n';\nfs.writeFileSync(filepathOut, body, 'utf8');\n\nreturn { chatId, text: cleanText, saved: true, file: 'raw/inbox/' + filename, transcribeError };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2480,
+        1136
+      ],
+      "id": "a64cb2b8-e891-4a4e-800e-5b288ee128ef",
+      "name": "Transcribe voice"
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst config = JSON.parse(fs.readFileSync('/home/node/config.json', 'utf8'));\n\nconst result = $('Transcribe voice').item.json;\nconst chatId = result.chatId || $('Telegram Trigger').item.json.message.chat.id;\n\nlet text;\nif (result.saved && result.text) {\n  const preview = result.text.length > 200 ? result.text.slice(0, 200) + '…' : result.text;\n  text = 'حُفظ ✅ 🎤\\n\\n📁 ' + result.file + '\\n\\n«' + preview + '»';\n} else if (result.saved) {\n  text = 'حُفظ ✅ — لكن فشل تفريغ الصوت' + (result.transcribeError ? '\\n⚠️ ' + result.transcribeError : '');\n} else {\n  text = '❌ فشل حفظ الملاحظة الصوتية' + (result.transcribeError ? '\\n' + result.transcribeError : '');\n}\n\nawait this.helpers.httpRequest({\n  method: 'POST',\n  url: 'https://api.telegram.org/bot' + config.telegram_bot_token + '/sendMessage',\n  headers: { 'Content-Type': 'application/json' },\n  body: { chat_id: chatId, text: text }\n});\n\nreturn { sent: true };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2688,
+        1136
+      ],
+      "id": "e97ece5e-0462-42b9-b800-5e35770a9bbc",
+      "name": "Reply: voice saved"
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst config = JSON.parse(fs.readFileSync('/home/node/config.json', 'utf8'));\n\nconst message = $('Telegram Trigger').item.json.message;\nif (!message.photo && !message.document?.mime_type?.startsWith('image')) return [];\n\nconst chatId = message.chat.id;\nconst caption = message.caption || '';\nconst mediaGroupId = message.media_group_id || null;\n\n// Get the photo file from Telegram\nconst photo = message.photo ? message.photo[message.photo.length - 1] : message.document;\nconst fileId = photo.file_id;\nconst fileInfo = await this.helpers.httpRequest({\n  method: 'GET',\n  url: 'https://api.telegram.org/bot' + config.telegram_bot_token + '/getFile?file_id=' + fileId\n});\nconst filePath = fileInfo.result.file_path;\nconst fileUrl = 'https://api.telegram.org/file/bot' + config.telegram_bot_token + '/' + filePath;\n\nconst imageBuffer = await this.helpers.httpRequest({\n  method: 'GET',\n  url: fileUrl,\n  returnFullResponse: true,\n  encoding: 'arraybuffer'\n});\nconst base64Image = Buffer.from(imageBuffer.body).toString('base64');\nconst mimeType = filePath.endsWith('.png') ? 'image/png' : 'image/jpeg';\n\n// Media-group handling — only first photo of a group creates the note\nconst groupCachePath = config.knowledge_dir + '/../media_group_cache.json';\nlet groupCache = {};\ntry { groupCache = JSON.parse(fs.readFileSync(groupCachePath, 'utf8')); } catch(e) {}\nconst now0 = Date.now();\nObject.keys(groupCache).forEach(k => {\n  if (now0 - groupCache[k].timestamp > 30000) delete groupCache[k];\n});\nif (mediaGroupId && groupCache[mediaGroupId]) {\n  groupCache[mediaGroupId].count++;\n  fs.writeFileSync(groupCachePath, JSON.stringify(groupCache), 'utf8');\n  // still store the extra image file so nothing is lost\n  const imagesDirX = config.knowledge_dir + '/raw/images';\n  fs.mkdirSync(imagesDirX, { recursive: true });\n  const extraName = Date.now() + '.' + (filePath.endsWith('.png') ? 'png' : 'jpg');\n  fs.writeFileSync(imagesDirX + '/' + extraName, Buffer.from(imageBuffer.body));\n  return { skipped: true, reason: 'already_processed_group', mediaGroupId };\n}\nif (mediaGroupId) {\n  groupCache[mediaGroupId] = { timestamp: now0, count: 1 };\n  fs.writeFileSync(groupCachePath, JSON.stringify(groupCache), 'utf8');\n  await new Promise(resolve => setTimeout(resolve, 2000));\n  try { groupCache = JSON.parse(fs.readFileSync(groupCachePath, 'utf8')); } catch(e) {}\n}\nconst totalInGroup = mediaGroupId ? (groupCache[mediaGroupId]?.count || 1) : 1;\n\n// Vision content description (allowed for capture: describe, never categorize)\nlet description = '';\nlet visionError = '';\ntry {\n  const groqResponse = await this.helpers.httpRequest({\n    method: 'POST',\n    url: 'https://api.groq.com/openai/v1/chat/completions',\n    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + config.groq_api_key },\n    body: {\n      model: 'meta-llama/llama-4-scout-17b-16e-instruct',\n      temperature: 0.1,\n      messages: [{\n        role: 'user',\n        content: [\n          { type: 'image_url', image_url: { url: 'data:' + mimeType + ';base64,' + base64Image } },\n          { type: 'text', text: 'Describe the content of this image faithfully and completely: what it shows, any visible text (transcribe it exactly, keep Arabic as Arabic), and context. Plain text only, no JSON, no opinions, no categorization.' + (caption ? '\\nUser caption: ' + caption : '') + (totalInGroup > 1 ? '\\nNote: this is 1 of ' + totalInGroup + ' photos sent together.' : '') }\n        ]\n      }]\n    },\n    timeout: 60000\n  });\n  description = groqResponse.choices?.[0]?.message?.content || '';\n} catch(e) {\n  visionError = e.message;\n}\n\n// Reminder in caption\nconst remindMatch = caption.match(/\\/remind\\s+(\\d+)(day|days|week|weeks|month|months)/i);\nlet reminderDate = null;\nconst cleanCaption = caption.replace(/\\/remind\\s+\\S+/i, '').trim();\nif (remindMatch) {\n  const amount = parseInt(remindMatch[1]);\n  const unit = remindMatch[2].toLowerCase();\n  const d = new Date();\n  if (unit.startsWith('day')) d.setDate(d.getDate() + amount);\n  else if (unit.startsWith('week')) d.setDate(d.getDate() + amount * 7);\n  else if (unit.startsWith('month')) d.setMonth(d.getMonth() + amount);\n  reminderDate = d.toISOString().split('T')[0];\n}\n\n// Store image in raw/images, note in raw/inbox\nconst imagesDir = config.knowledge_dir + '/raw/images';\nfs.mkdirSync(imagesDir, { recursive: true });\nconst imageFilename = Date.now() + '.' + (filePath.endsWith('.png') ? 'png' : 'jpg');\nfs.writeFileSync(imagesDir + '/' + imageFilename, Buffer.from(imageBuffer.body));\n\nconst now = new Date();\nconst pad = n => String(n).padStart(2, '0');\nconst stamp = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes());\nconst slugSource = cleanCaption || 'image';\nconst slug = slugSource.toLowerCase().replace(/[^a-z0-9؀-ۿ]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'image';\n\nconst inboxDir = config.knowledge_dir + '/raw/inbox';\nfs.mkdirSync(inboxDir, { recursive: true });\nlet filename = stamp + '-image-' + slug + '.md';\nlet filepathOut = inboxDir + '/' + filename;\nlet counter = 1;\nwhile (fs.existsSync(filepathOut)) {\n  filename = stamp + '-image-' + slug + '-' + (++counter) + '.md';\n  filepathOut = inboxDir + '/' + filename;\n}\n\nconst fm = [\n  '---',\n  'agent: ورّاق',\n  'captured: ' + now.toISOString(),\n  'type: image',\n  'source: telegram-image',\n  'content-depth: ' + (description ? 'transcript' : 'metadata-only'),\n  'image: raw/images/' + imageFilename,\n  visionError ? 'fetch-error: \"' + visionError.replace(/\"/g, \"'\").slice(0, 200) + '\"' : null,\n  '---',\n].filter(Boolean).join('\\n');\n\nconst reminderSection = reminderDate ? '\\n**Reminder:** ' + reminderDate + '\\n' : '';\nconst groupNote = totalInGroup > 1 ? '\\n**Part of group:** ' + totalInGroup + ' photos\\n' : '';\nconst body = fm + '\\n\\n# 🖼 ' + (cleanCaption || 'Image — ' + stamp) + '\\n\\n![[' + 'raw/images/' + imageFilename + ']]\\n' + (cleanCaption ? '\\n**Caption:** ' + cleanCaption + '\\n' : '') + groupNote + reminderSection + '\\n' + (description || '_(no description available)_') + '\\n';\nfs.writeFileSync(filepathOut, body, 'utf8');\n\nreturn {\n  chatId,\n  saved: true,\n  file: 'raw/inbox/' + filename,\n  image: imageFilename,\n  totalInGroup,\n  mediaGroupId,\n  visionError,\n  gotDescription: !!description\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2480,
+        1360
+      ],
+      "id": "94718ff9-1f5b-47c1-96e2-d14141a10c2a",
+      "name": "Save image"
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst config = JSON.parse(fs.readFileSync('/home/node/config.json', 'utf8'));\n\nconst result = $('Save image').item.json;\nif (result.skipped) return { skipped: true };\n\nconst chatId = result.chatId || $('Telegram Trigger').item.json.message.chat.id;\n\nlet text;\nif (result.saved && result.gotDescription) {\n  text = 'حُفظ ✅ 🖼\\n\\n📁 ' + result.file + (result.totalInGroup > 1 ? '\\n📷 ' + result.totalInGroup + ' صور في المجموعة' : '');\n} else if (result.saved) {\n  text = 'حُفظ ✅ 🖼 — الصورة فقط، فشل وصف المحتوى' + (result.visionError ? '\\n⚠️ ' + result.visionError : '');\n} else {\n  text = '❌ فشل حفظ الصورة';\n}\n\nawait this.helpers.httpRequest({\n  method: 'POST',\n  url: 'https://api.telegram.org/bot' + config.telegram_bot_token + '/sendMessage',\n  headers: { 'Content-Type': 'application/json' },\n  body: { chat_id: chatId, text: text }\n});\n\nreturn { sent: true };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2704,
+        1360
+      ],
+      "id": "692431a7-e766-4586-9625-d634ff8f9a6a",
+      "name": "Reply: image saved"
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst path = require('path');\nconst config = JSON.parse(fs.readFileSync('/home/node/config.json', 'utf8'));\n\nconst message = $('Telegram Trigger').item.json.message;\nif (!message || !message.text) return [];\nlet question = message.text.trim();\nconst senderId = String(message.from?.id || '');\nconst chatId = String(message.chat?.id || '');\n\nconst KN = config.knowledge_dir;\nconst WIKI = KN + '/wiki';\nconst PUBLIC = KN + '/_public';\nconst GH = config.github_base || '';\n\n// HTML is more robust than Markdown for our content (only & < > need escaping) and is the\n// only mode where expandable blockquotes work — so citations collapse into a tap-to-expand block.\nfunction htmlEscape(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }\n\nfunction telegramFormat(answer, meta) {\n  if (!answer) return answer;\n  const names = [...new Set((answer.match(/\\[\\[([^\\]]+)\\]\\]/g) || []).map(s => s.slice(2, -2).trim()))];\n  // drop the model's own Sources/المصادر line — we build our own\n  let prose = answer.replace(/\\n*\\s*(sources|المصادر|المصدر)\\s*:[\\s\\S]*$/i, '');\n  prose = prose.replace(/\\[\\[([^\\]]+)\\]\\]/g, '$1');   // strip remaining brackets\n  prose = htmlEscape(prose).trim();\n  let footer = '';\n  if (names.length) {\n    const items = [];\n    for (const n of names) {\n      const m = meta[n];\n      const cardUrl = (m && m.rel && GH) ? GH + '/wiki/' + m.rel.split('/').map(encodeURIComponent).join('/') : null;\n      let line = cardUrl ? '<a href=\"' + htmlEscape(cardUrl) + '\">' + htmlEscape(n) + '</a>' : htmlEscape(n);\n      if (m && m.sourceUrl) line += ' — <a href=\"' + htmlEscape(m.sourceUrl) + '\">المصدر</a>';\n      items.push('• ' + line);\n    }\n    footer = '\\n\\n<blockquote expandable>🔗 المصادر:\\n' + items.join('\\n') + '</blockquote>';\n  }\n  return prose + footer;\n}\n\n// ---------- helpers ----------\nfunction listCards(subdir) {\n  const dir = subdir ? WIKI + '/' + subdir : WIKI;\n  let out = [];\n  let entries = [];\n  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch(e) { return out; }\n  for (const ent of entries) {\n    if (ent.isDirectory()) out = out.concat(listCards((subdir ? subdir + '/' : '') + ent.name));\n    else if (ent.name.endsWith('.md') && ent.name !== 'index.md') out.push((subdir ? subdir + '/' : '') + ent.name);\n  }\n  return out;\n}\nfunction readCard(rel) {\n  try { return fs.readFileSync(WIKI + '/' + rel, 'utf8'); } catch(e) { return ''; }\n}\nfunction cardName(rel) { return path.basename(rel, '.md'); }\nfunction firstHeading(txt) { const m = txt.match(/^#\\s+(.+)$/m); return m ? m[1].trim() : ''; }\nfunction frontTags(txt) { const m = txt.match(/tags:\\s*\\[([^\\]]*)\\]/); return m ? m[1] : ''; }\n\n// Arabic/English-friendly tokenizer\nfunction tokens(s) {\n  return (s || '').toLowerCase()\n    .replace(/[ً-ٰٟ]/g, '')            // strip Arabic diacritics\n    .replace(/[^\\p{L}\\p{N}]+/gu, ' ')\n    .split(/\\s+/).filter(t => t.length >= 2);\n}\n\n// append a line under a heading in كاتب's unified store\nfunction appendToTasks(heading, line) {\n  const p = KN + '/AIOS/tasks.md';\n  let t = '';\n  try { t = fs.readFileSync(p, 'utf8'); } catch(e) { t = '---\\nagent: كاتب\\nupdated: \\n---\\n\\n# المهام والتقويم\\n'; }\n  const re = new RegExp('(##\\\\s*' + heading.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&') + '[^\\\\n]*\\\\n)');\n  if (re.test(t)) t = t.replace(re, '$1' + line + '\\n');\n  else t += '\\n## ' + heading + '\\n' + line + '\\n';\n  t = t.replace(/^updated:.*$/m, 'updated: ' + new Date().toISOString().split('T')[0]);\n  fs.writeFileSync(p, t, 'utf8');\n}\n\nfunction loadGuests() { try { return JSON.parse(fs.readFileSync(config.guests_file, 'utf8')); } catch(e) { return []; } }\nfunction saveGuests(g) { fs.writeFileSync(config.guests_file, JSON.stringify(g, null, 2), 'utf8'); }\nfunction isOwner() { return senderId === String(config.telegram_chat_id); }\nfunction getGuest() {\n  const today = new Date().toISOString().split('T')[0];\n  return loadGuests().find(g => String(g.telegram_id) === senderId && g.expires >= today) || null;\n}\n\n// Retrieve top-N relevant wiki cards for a query (start at index, load relevant only — never raw)\nasync function answerFromWiki(q, restrictDir) {\n  const cards = restrictDir ? listCards(restrictDir) : listCards('');\n  if (cards.length === 0) return null;\n  const qtok = tokens(q);\n  const scored = [];\n  for (const rel of cards) {\n    const txt = readCard(rel);\n    const hay = (cardName(rel) + ' ' + firstHeading(txt) + ' ' + frontTags(txt) + ' ' + txt).toLowerCase()\n      .replace(/[ً-ٰٟ]/g, '');\n    let score = 0;\n    for (const t of qtok) { if (hay.includes(t)) score += 1; }\n    // weight title/tag hits higher\n    const head = (cardName(rel) + ' ' + firstHeading(txt) + ' ' + frontTags(txt)).toLowerCase();\n    for (const t of qtok) { if (head.includes(t)) score += 2; }\n    if (score > 0) scored.push({ rel, score, txt });\n  }\n  scored.sort((a, b) => b.score - a.score);\n  const top = scored.slice(0, 12);\n  if (top.length === 0) return { answer: null, cards: [], meta: {} };\n\n  // metadata for citation links: card path + original source URL (if any)\n  const meta = {};\n  for (const c of top) {\n    // prefer frontmatter source-url; else first http(s) URL anywhere in the card body (batch cards list them)\n    const m = c.txt.match(/^source-url:\\s*(\\S+)/m)\n           || c.txt.match(/^source:\\s*(https?:\\/\\/\\S+)/m)\n           || c.txt.match(/(https?:\\/\\/[^\\s)\\]]+)/);\n    meta[cardName(c.rel)] = { rel: c.rel, sourceUrl: m ? m[1] : null };\n  }\n\n  let context = '';\n  let indexTxt = '';\n  try { indexTxt = fs.readFileSync(WIKI + '/index.md', 'utf8').slice(0, 2500); } catch(e) {}\n  if (indexTxt) context += '=== wiki/index (اللوحة) ===\\n' + indexTxt + '\\n';\n  for (const c of top) context += '\\n=== بطاقة: [[' + cardName(c.rel) + ']] ===\\n' + c.txt.slice(0, 2500) + '\\n';\n  context = context.slice(0, 22000);\n\n  const resp = await this.helpers.httpRequest({\n    method: 'POST', url: 'https://api.groq.com/openai/v1/chat/completions',\n    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + config.groq_api_key },\n    body: { model: 'llama-3.3-70b-versatile', temperature: 0.3, max_tokens: 600,\n      frequency_penalty: 0.6, presence_penalty: 0.3, messages: [\n      { role: 'system', content: 'You are Abdullah\\'s personal knowledge assistant. Answer ONLY from the provided wiki cards — never invent. CRITICAL RULES:\\n1) Reply in the SAME language as the question (Arabic question -> Arabic answer; English question -> English answer).\\n2) Be concise: 2-5 sentences MAX. Never repeat a sentence or phrase. Stop when answered.\\n3) Cite the cards you used as [[card-name]], inline or in a final \"Sources:\" line.\\n4) If the cards do not answer it, say so plainly.' },\n      { role: 'user', content: context + '\\n\\nQuestion: ' + q } ]\n    }\n  });\n  let ans = resp.choices?.[0]?.message?.content || null;\n  // safety net: collapse any runaway repetition the model still produces\n  if (ans) {\n    const sents = ans.split(/(?<=[.!؟\\n])\\s+/);\n    const seen = new Set(); const kept = [];\n    for (const s of sents) { const k = s.trim().slice(0, 40); if (k && seen.has(k)) continue; seen.add(k); kept.push(s); }\n    ans = kept.join(' ').slice(0, 2000);\n  }\n  return { answer: ans, cards: top.map(c => cardName(c.rel)), meta };\n}\n\n// ====================================================\n// OWNER\n// ====================================================\nif (isOwner()) {\n  if (question.startsWith('http')) return [];\n\n  // /invite /guests /revoke — guest management (read from _public in Phase 6)\n  if (question.toLowerCase().startsWith('/invite')) {\n    const parts = question.split(' ');\n    if (parts.length < 4) return { answer: 'Usage: /invite <telegram_id> <topics> <duration>\\nمثال: /invite 123456789 travel,food 7days' };\n    const guestId = parts[1];\n    const categories = parts[2].toLowerCase().split(',').map(c => c.trim().replace(/[^a-z0-9_-]/g, ''));\n    const durationStr = parts[3].toLowerCase();\n    let expires;\n    if (durationStr === 'permanent') expires = '9999-12-31';\n    else { const amount = parseInt(durationStr); const unit = durationStr.replace(/[0-9]/g, ''); const d = new Date();\n      if (unit.startsWith('day')) d.setDate(d.getDate() + amount); else if (unit.startsWith('week')) d.setDate(d.getDate() + amount * 7); else if (unit.startsWith('month')) d.setMonth(d.getMonth() + amount); expires = d.toISOString().split('T')[0]; }\n    const guests = loadGuests();\n    const idx = guests.findIndex(g => String(g.telegram_id) === guestId);\n    const ng = { telegram_id: guestId, categories, expires, added: new Date().toISOString().split('T')[0] };\n    if (idx >= 0) guests[idx] = ng; else guests.push(ng);\n    saveGuests(guests);\n    return { answer: '✅ دعوة ضيف\\n\\nID: ' + guestId + '\\nالمواضيع: ' + categories.join(', ') + '\\nتنتهي: ' + expires };\n  }\n  if (question.toLowerCase().startsWith('/guests')) {\n    const today = new Date().toISOString().split('T')[0];\n    const active = loadGuests().filter(g => g.expires >= today);\n    if (active.length === 0) return { answer: 'لا ضيوف نشطين.' };\n    return { answer: '👥 الضيوف (' + active.length + '):\\n\\n' + active.map((g, i) => `${i + 1}. ID: ${g.telegram_id}\\n   المواضيع: ${g.categories.join(', ')}\\n   تنتهي: ${g.expires}`).join('\\n\\n') };\n  }\n  if (question.toLowerCase().startsWith('/revoke')) {\n    const guestId = question.split(' ')[1];\n    if (!guestId) return { answer: 'Usage: /revoke <telegram_id>' };\n    let guests = loadGuests(); const before = guests.length;\n    guests = guests.filter(g => String(g.telegram_id) !== guestId); saveGuests(guests);\n    return { answer: before > guests.length ? '✅ أُلغيت صلاحية ' + guestId : '❌ غير موجود: ' + guestId };\n  }\n\n  // /list — browse the wiki (domains via index, or a topic)\n  if (question.toLowerCase().startsWith('/list') || question.toLowerCase() === 'list') {\n    const arg = question.replace(/^\\/?list\\s*/i, '').replace(/[،,.؛;]+$/, '').trim();\n    if (!arg) {\n      let idx = '';\n      try { idx = fs.readFileSync(WIKI + '/index.md', 'utf8'); } catch(e) {}\n      const domains = (idx.match(/^###\\s+(.+)$/gm) || []).map(s => s.replace(/^###\\s+/, '')).filter(d => !/أشخاص|متفرقة/.test(d) || true);\n      const concepts = listCards('concepts').map(cardName);\n      return { answer: '🗂 *مجالات اللوحة:*\\n' + (domains.length ? domains.map(d => '• ' + d).join('\\n') : '—') + '\\n\\n💡 المفاهيم (' + concepts.length + '): اكتب /list <موضوع> لتصفّح موضوع، أو افتح wiki/index.md في Obsidian.' };\n    }\n    // topic listing: matching cards\n    const r = await answerFromWiki.call(this, arg, null);\n    if (!r || !r.cards.length) return { answer: 'لا بطاقات مطابقة لـ \"' + arg + '\" في الويكي.' };\n    return { answer: '🗂 بطاقات متعلّقة بـ \"' + arg + '\":\\n' + r.cards.map(c => '• [[' + c + ']]').join('\\n') };\n  }\n\n  // /spec <idea> — فقيه turns an idea into a requirements DRAFT (you approve before وكيل builds)\n  if (question.toLowerCase().startsWith('/spec')) {\n    const idea = question.replace(/^\\/spec\\s*/i, '').trim();\n    if (!idea) return { answer: 'Usage: /spec <فكرة المشروع>\\nفقيه يكتب مسودة متطلبات، تراجعها وتعتمدها قبل أي بناء.' };\n    try {\n      await this.helpers.httpRequest({ method: 'POST', url: config.build_trigger_url + '/spec', headers: { 'Content-Type': 'application/json' }, body: { idea }, timeout: 10000 });\n      return { answer: '📋 فقيه يحضّر مسودة المتطلبات. سأرسلها لك للمراجعة خلال دقائق — لن يُبنى شيء قبل أن تعتمدها (status: approved).' };\n    } catch(e) { return { answer: '❌ تعذّر تشغيل فقيه: ' + e.message }; }\n  }\n\n  // /research <question> — فقيه writes a research report (options/tradeoffs/recommendation)\n  if (question.toLowerCase().startsWith('/research')) {\n    const q = question.replace(/^\\/research\\s*/i, '').trim();\n    if (!q) return { answer: 'Usage: /research <سؤال>\\nفقيه يكتب تقرير مقارنة في wiki/synthesis.' };\n    try {\n      await this.helpers.httpRequest({ method: 'POST', url: config.build_trigger_url + '/research', headers: { 'Content-Type': 'application/json' }, body: { idea: q }, timeout: 10000 });\n      return { answer: '🔎 فقيه يبحث ويكتب تقريراً. سأرسله لك خلال دقائق.' };\n    } catch(e) { return { answer: '❌ تعذّر تشغيل فقيه: ' + e.message }; }\n  }\n\n  // /publish — run the courier: sanitize share:public cards → _public/_pending → approval\n  if (question.toLowerCase().startsWith('/publish')) {\n    try {\n      await this.helpers.httpRequest({ method: 'POST', url: config.build_trigger_url + '/courier', timeout: 10000 });\n      return { answer: '📤 شغّلت الساعي. سأرسل لك معاينة كل بطاقة معلّمة share: public للموافقة خلال دقائق.' };\n    } catch(e) { return { answer: '❌ تعذّر تشغيل الساعي: ' + e.message }; }\n  }\n\n  // /approve <card> — move a sanitized pending card into _public (guests can then see it)\n  if (question.toLowerCase().startsWith('/approve')) {\n    const name = question.replace(/^\\/approve\\s*/i, '').trim().replace(/^\\[\\[|\\]\\]$/g, '');\n    if (!name) return { answer: 'Usage: /approve <اسم-البطاقة>' };\n    const src = PUBLIC + '/_pending/' + name + '.md';\n    const dst = PUBLIC + '/' + name + '.md';\n    try {\n      if (!fs.existsSync(src)) return { answer: '❌ لا توجد بطاقة معلّقة بهذا الاسم: ' + name };\n      fs.copyFileSync(src, dst); fs.unlinkSync(src);\n      // prune from manifest\n      try { const mf = PUBLIC + '/_pending/_manifest.txt'; const lines = fs.readFileSync(mf,'utf8').split('\\n').filter(l => l.trim() && l.trim() !== name); fs.writeFileSync(mf, lines.join('\\n') + (lines.length?'\\n':'')); } catch(e) {}\n      return { answer: '✅ نُشرت [[' + name + ']] — يراها الضيوف الآن في المحتوى العام.' };\n    } catch(e) { return { answer: '❌ خطأ: ' + e.message }; }\n  }\n\n  // /reject <card> — discard a pending sanitized card\n  if (question.toLowerCase().startsWith('/reject')) {\n    const name = question.replace(/^\\/reject\\s*/i, '').trim().replace(/^\\[\\[|\\]\\]$/g, '');\n    if (!name) return { answer: 'Usage: /reject <اسم-البطاقة>' };\n    const src = PUBLIC + '/_pending/' + name + '.md';\n    try {\n      if (fs.existsSync(src)) fs.unlinkSync(src);\n      try { const mf = PUBLIC + '/_pending/_manifest.txt'; const lines = fs.readFileSync(mf,'utf8').split('\\n').filter(l => l.trim() && l.trim() !== name); fs.writeFileSync(mf, lines.join('\\n') + (lines.length?'\\n':'')); } catch(e) {}\n      return { answer: '🗑 رُفضت ' + name + ' — لم تُنشر، وتبقى خاصة.' };\n    } catch(e) { return { answer: '❌ خطأ: ' + e.message }; }\n  }\n\n  // /rescan — trigger build-wiki on new raw/ (مُصنِّف, strong tier on the host)\n  if (question.toLowerCase().startsWith('/rescan')) {\n    try {\n      const r = await this.helpers.httpRequest({ method: 'POST', url: config.build_trigger_url, timeout: 10000 });\n      if (r.started) return { answer: '🔄 بدأ بناء الويكي (مُصنِّف). سيظهر الجديد في wiki/ خلال دقائق.' };\n      return { answer: 'ℹ️ بناء قيد التشغيل بالفعل — انتظر اكتماله.' };\n    } catch(e) {\n      return { answer: '❌ تعذّر تشغيل البناء: ' + e.message };\n    }\n  }\n\n  // /task <text> — add an open task to كاتب's unified store\n  if (question.toLowerCase().startsWith('/task')) {\n    const txt = question.replace(/^\\/task\\s*/i, '').trim();\n    if (!txt) return { answer: 'Usage: /task <وصف المهمة>' };\n    appendToTasks('📌 مهام مفتوحة', '- [ ] ' + txt + ' (أُضيفت ' + new Date().toISOString().split('T')[0] + ')');\n    return { answer: '✅ أُضيفت مهمة:\\n' + txt + '\\n\\nستظهر في موجز كاتب.' };\n  }\n\n  // /remind <when> <text> — standalone reminder into the unified store (كاتب owns it)\n  if (question.toLowerCase().startsWith('/remind')) {\n    const body = question.replace(/^\\/remind\\s*/i, '').trim();\n    const iso = body.match(/^(\\d{4}-\\d{2}-\\d{2})/);\n    const rel = body.match(/^(\\d+)\\s*(days?|weeks?|months?|يوم|أيام|[أا]سبوع|[أا]سابيع|شهر|[أا]شهر|شهور)\\b/i);\n    let date = null, rest = body;\n    if (iso) { date = iso[1]; rest = body.slice(iso[0].length).trim(); }\n    else if (rel) {\n      const amt = parseInt(rel[1]); const u = rel[2].toLowerCase(); const d = new Date();\n      if (/week|سبوع|سابيع/.test(u)) d.setDate(d.getDate() + amt * 7);\n      else if (/month|شهر|شهور/.test(u)) d.setMonth(d.getMonth() + amt);\n      else d.setDate(d.getDate() + amt);\n      date = d.toISOString().split('T')[0]; rest = body.slice(rel[0].length).trim();\n    }\n    if (!rest) return { answer: 'Usage: /remind <3days|2weeks|1month|YYYY-MM-DD> <نص>' };\n    appendToTasks('⏰ تذكيرات', '- (' + (date || 'بلا تاريخ') + ') ' + rest);\n    return { answer: '⏰ سُجّل تذكير' + (date ? ' (' + date + ')' : '') + ':\\n' + rest + '\\n\\nسيذكّرك به كاتب في موجزه.' };\n  }\n\n  // /rules — rules live in MI.md + vault-map.md now (show them)\n  if (question.toLowerCase().startsWith('/rules')) {\n    let mi = '', vm = '';\n    try { mi = fs.readFileSync(KN + '/AIOS/MI.md', 'utf8'); } catch(e) {}\n    try { vm = fs.readFileSync(KN + '/AIOS/vault-map.md', 'utf8'); } catch(e) {}\n    const laws = (mi.match(/## القوانين العليا[\\s\\S]*?(?=\\n## )/) || [''])[0].slice(0, 1500);\n    return { answer: '📋 *القواعد الآن في AIOS/MI.md و AIOS/vault-map.md*\\n\\n' + (laws || 'افتح AIOS/MI.md') + '\\n\\n✏️ للتعديل: حرّر الملفين في Obsidian.' };\n  }\n\n  // /digest — retired in favor of كاتب's morning/evening briefs\n  if (question.toLowerCase().startsWith('/digest')) {\n    return { answer: 'ℹ️ الموجز اليومي القديم استُبدل بموجزات كاتب: 🌅 الصباح ٧ص و🌙 المساء ٩م تلقائياً.\\n\\nاستخدم /task و /remind لإضافة مهام وتذكيرات، وتظهر في الموجز.' };\n  }\n\n  // deprecated capture-time recategorization commands (capture is dumb now; مُصنِّف organizes)\n  if (question.toLowerCase().startsWith('/tag') || question.toLowerCase().startsWith('/suggest')) {\n    return { answer: 'ℹ️ لم يعد التصنيف يدوياً. أرسل الرابط فقط ليُحفظ خاماً، ومُصنِّف يبني البطاقات ويربطها ليلاً (أو /rescan الآن).' };\n  }\n\n  if (question.toLowerCase().startsWith('/help')) {\n    return { answer: '📖 *الأوامر*\\n\\n🔗 *الحفظ*\\nأرسل رابطاً/صوتاً/صورة ليُحفظ خاماً تلقائياً\\n\\n❓ *السؤال*\\nاسأل بأي لغة: \"ماذا أعرف عن X؟\" — أجيب من الويكي مع روابط المصادر\\n\\n🗂 *التصفّح*\\n/list — مجالات اللوحة · /list <موضوع> — بطاقات موضوع\\n\\n📝 *المهام (كاتب)*\\n/task <نص> — مهمة جديدة\\n/remind <3days|2weeks|YYYY-MM-DD> <نص> — تذكير\\nتظهر في موجز الصباح ٧ص والمساء ٩م\\n\\n🔄 *البناء*\\n/rescan — بناء الويكي الآن · /rules — قواعد MI و vault-map\\n\\n🏗 *المشاريع*\\n/research <سؤال> — تقرير فقيه\\n/spec <فكرة> — مسودة متطلبات (تعتمدها ثم يبنيها وكيل)\\n\\n👥 *الضيوف والنشر*\\nعلّم بطاقة share: public ثم /publish — الساعي يعقّمها ويعرضها للموافقة\\n/approve <بطاقة> · /reject <بطاقة>\\n/invite <id> <topics> <duration> · /guests · /revoke <id>' };\n  }\n\n  // greetings\n  const greetings = ['hi','hello','hey','مرحبا','هلا','السلام','صباح','مساء'];\n  if (greetings.some(g => question.toLowerCase().startsWith(g))) {\n    return { answer: 'أهلاً! أرسل رابطاً لحفظه، أو اسألني عن شيء تعرفه 👋' };\n  }\n\n  // ---- knowledge question → wiki ----\n  const r = await answerFromWiki.call(this, question, null);\n  if (!r) return { answer: 'الويكي فارغ بعد. أرسل روابط ثم /rescan.' };\n  if (!r.answer || /لم أجد|لا توجد معلوم|not found|no .* found/i.test(r.answer) && !r.cards.length) {\n    // check raw/inbox for captured-but-unbuilt\n    let pending = 0;\n    try { pending = fs.readdirSync(KN + '/raw/inbox').filter(f => f.endsWith('.md')).length; } catch(e) {}\n    const note = pending ? '\\n\\n(ملاحظة: ' + pending + ' عنصر ملتقط في raw/inbox لم يُبنَ بعد — جرّب /rescan)' : '';\n    return { answer: telegramFormat(r.answer || 'لم أجد شيئاً عن هذا في الويكي.', r.meta || {}) + note, html: true };\n  }\n  return { answer: telegramFormat(r.answer, r.meta || {}), html: true };\n}\n\n// ====================================================\n// GUEST  (full layer in Phase 6; here: answer only from _public/)\n// ====================================================\nconst guest = getGuest();\nif (!guest) {\n  return { answer: 'مرحباً! ليس لديك صلاحية وصول. تواصل مع صاحب البوت.\\n\\nHello! You do not have access. Contact the bot owner.' };\n}\nif (question.startsWith('http') || question.startsWith('/')) {\n  return { answer: 'الضيوف يسألون فقط عن المحتوى العام.' };\n}\nconst guestGreetings = ['hi','hello','hey','مرحبا','هلا','السلام'];\nif (guestGreetings.some(g => question.toLowerCase().startsWith(g))) {\n  return { answer: 'أهلاً! اسأل عن المحتوى العام المتاح.' };\n}\n// answer strictly from _public/\nlet pubCards = [];\ntry { pubCards = fs.readdirSync(PUBLIC).filter(f => f.endsWith('.md')); } catch(e) {}\nif (pubCards.length === 0) return { answer: 'لا يوجد محتوى عام متاح بعد.' };\nlet ctx = '';\nfor (const f of pubCards) { try { ctx += '\\n\\n=== ' + f.replace('.md','') + ' ===\\n' + fs.readFileSync(PUBLIC + '/' + f, 'utf8').slice(0, 2000); } catch(e) {} }\nconst gResp = await this.helpers.httpRequest({\n  method: 'POST', url: 'https://api.groq.com/openai/v1/chat/completions',\n  headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + config.groq_api_key },\n  body: { model: 'llama-3.3-70b-versatile', temperature: 0.3, max_tokens: 600,\n    frequency_penalty: 0.6, presence_penalty: 0.3, messages: [\n    { role: 'system', content: 'Knowledge assistant. Answer ONLY from the provided public content. Reply in the SAME language as the question. Concise: 2-5 sentences max, never repeat yourself.' },\n    { role: 'user', content: ctx.slice(0, 20000) + '\\n\\nQuestion: ' + question } ]\n  }\n});\nreturn { answer: gResp.choices?.[0]?.message?.content || 'تعذّر الحصول على إجابة.' };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2496,
+        1568
+      ],
+      "id": "8946d80d-5835-4f1a-bad6-244fae1f3884",
+      "name": "Answer question"
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst config = JSON.parse(fs.readFileSync('/home/node/config.json', 'utf8'));\n\nconst result = $('Answer question').item.json;\nconst answer = (result.answer || '').slice(0, 4096);\nconst chatId = $('Telegram Trigger').item.json.message.chat.id;\nconst url = 'https://api.telegram.org/bot' + config.telegram_bot_token + '/sendMessage';\n\nasync function send(body) {\n  return this.helpers.httpRequest({ method: 'POST', url, headers: { 'Content-Type': 'application/json' }, body });\n}\n\nif (result.html) {\n  try {\n    await send.call(this, { chat_id: chatId, text: answer, parse_mode: 'HTML', disable_web_page_preview: true });\n    return { sent: true, mode: 'html' };\n  } catch(e) {\n    // HTML parse error → strip tags and resend as plain text so the answer never drops\n    const plain = answer\n      .replace(/<blockquote[^>]*>/gi, '').replace(/<\\/blockquote>/gi, '')\n      .replace(/<a href=\"([^\"]+)\">([^<]*)<\\/a>/gi, '$2 ($1)')\n      .replace(/<[^>]+>/g, '')\n      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');\n    await send.call(this, { chat_id: chatId, text: plain, disable_web_page_preview: true });\n    return { sent: true, mode: 'plain-fallback' };\n  }\n}\n\nawait send.call(this, { chat_id: chatId, text: answer });\nreturn { sent: true, mode: 'plain' };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2720,
+        1568
+      ],
+      "id": "87897f68-9a47-475b-b930-f7f4d2008560",
+      "name": "Reply: answer"
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst message = $('Telegram Trigger').item.json.message;\nconst text = (message.text || '').trim();\n\nconst isCommand = text.startsWith('/tag') ||\n                  text.startsWith('/rules') ||\n                  text.startsWith('/rescan') ||\n                  text.startsWith('/list');\n\n// ناظم routing log — append-only, reviewable record of every message + its initial route.\n// (Foundation for diagnosing conversation/routing quality; صنّاع reviews it periodically.)\ntry {\n  let route;\n  if (message.voice || message.audio) route = 'capture:voice';\n  else if (message.photo || (message.document && message.document.mime_type && message.document.mime_type.startsWith('image'))) route = 'capture:image';\n  else if (/^https?:\\/\\//.test(text)) route = 'capture:link';\n  else if (text.startsWith('/')) route = 'command:' + text.split(/\\s/)[0];\n  else if (text) route = 'question';\n  else route = 'other';\n  const dir = '/home/node/knowledge/AIOS/history';\n  fs.mkdirSync(dir, { recursive: true });\n  fs.appendFileSync(dir + '/routing-log.jsonl',\n    JSON.stringify({ t: new Date().toISOString(), chat: String(message.chat && message.chat.id || ''), route, text: text.slice(0, 120) }) + '\\n', 'utf8');\n} catch(e) {}\n\nreturn {\n  message,\n  text,\n  isCommand\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1632,
+        1280
+      ],
+      "id": "210491c4-99f4-43bd-a391-31eb3d23e9e5",
+      "name": "Pre-router"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "0f3e974d-bd45-4cae-b401-d4a2f1152e5b",
+              "leftValue": "=={{ $json.isCommand === true ? 'yes' : 'no' }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1824,
+        1280
+      ],
+      "id": "64f481cd-cfe9-466b-afaa-99357128cc42",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst config = JSON.parse(fs.readFileSync('/home/node/config.json', 'utf8'));\n\nconst message = $('Telegram Trigger').item.json.message;\nconst chatId = String(message.chat.id);\nconst text = (message.text || message.caption || '').trim();\nconst messageId = message.message_id;\nconst now = Date.now();\n\n// Buffer file path\nconst bufferPath = config.message_buffer_file;\nlet buffer = {};\ntry { buffer = JSON.parse(fs.readFileSync(bufferPath, 'utf8')); } catch(e) {}\n\n// Clean old buffer entries (older than 5 seconds)\nObject.keys(buffer).forEach(k => {\n  if (now - buffer[k].timestamp > 8000) delete buffer[k];\n});\n\n// Check if there's a pending message from same chat\nif (buffer[chatId]) {\n  const prev = buffer[chatId];\n\n  // Handle \"/tag this...\" pattern — replace \"this\" with the URL from previous message\n  const prevUrl = prev.text.match(/https?:\\/\\/[^\\s]+/)?.[0];\n  const isTagThis = text.toLowerCase().startsWith('/tag') && /\\bthis\\b/i.test(text);\n  const isTagWithUrl = text.toLowerCase().startsWith('/tag') && text.match(/https?:\\/\\//);\n  const prevIsUrl = prev.text.match(/^https?:\\/\\/[^\\s]+$/);\n\n  let combined;\n\n  if (prevUrl && isTagThis) {\n    // \"/tag this #tags\" + previous URL → \"/tag URL #tags\"\n    combined = text.replace(/\\bthis\\b/i, prevUrl);\n  } else if (prevIsUrl && text.startsWith('/tag')) {\n    // Previous was pure URL, current is /tag command\n    const tags = text.match(/#[\\w_]+/g) || [];\n    combined = '/tag ' + prevUrl + (tags.length ? ' ' + tags.join(' ') : '');\n  } else if (prevIsUrl && text.match(/#[\\w_]+/)) {\n    // Previous was pure URL, current is just hashtags\n    const tags = text.match(/#[\\w_]+/g) || [];\n    combined = '/tag ' + prevUrl + ' ' + tags.join(' ');\n  } else {\n    // Default: just combine\n    combined = prev.text + ' ' + text;\n  }\n\n  delete buffer[chatId];\n  fs.writeFileSync(bufferPath, JSON.stringify(buffer), 'utf8');\n  return { message: { ...message, text: combined.trim() } };\n}\n\n// No pending message — store this one and wait\nbuffer[chatId] = { text, messageId, timestamp: now };\nfs.writeFileSync(bufferPath, JSON.stringify(buffer), 'utf8');\n\n// Re-read buffer\ntry { buffer = JSON.parse(fs.readFileSync(bufferPath, 'utf8')); } catch(e) {}\n\n// If our entry is still there (no follow-up came), process it alone\nif (buffer[chatId] && buffer[chatId].messageId === messageId) {\n  delete buffer[chatId];\n  fs.writeFileSync(bufferPath, JSON.stringify(buffer), 'utf8');\n  return { message: { ...message, text: text } };\n}\n\n// Another message already combined with ours — skip this one\nreturn [];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1424,
+        1280
+      ],
+      "id": "7b933eb9-0536-4815-af68-ef9537484745",
+      "name": "Message buffer"
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Message buffer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is it a URL?": {
+      "main": [
+        [
+          {
+            "node": "Save Link",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Transcribe voice",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Answer question",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Save image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply:Saved": {
+      "main": [
+        []
+      ]
+    },
+    "Save Link": {
+      "main": [
+        [
+          {
+            "node": "Reply:Saved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe voice": {
+      "main": [
+        [
+          {
+            "node": "Reply: voice saved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply: voice saved": {
+      "main": [
+        []
+      ]
+    },
+    "Save image": {
+      "main": [
+        [
+          {
+            "node": "Reply: image saved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Answer question": {
+      "main": [
+        [
+          {
+            "node": "Reply: answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pre-router": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Answer question",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is it a URL?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message buffer": {
+      "main": [
+        [
+          {
+            "node": "Pre-router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "6793d7d2-6a04-4fec-a863-e4da3ea5a48f",
+  "activeVersionId": "6793d7d2-6a04-4fec-a863-e4da3ea5a48f",
+  "versionCounter": 668,
+  "triggerCount": 1,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-05-22T21:48:02.897Z",
+      "createdAt": "2026-05-22T21:48:02.897Z",
+      "role": "workflow:owner",
+      "workflowId": "th6yWV4feEoh3Qwp",
+      "projectId": "EEJBoYQtj0Y2uZ8l",
+      "project": {
+        "updatedAt": "2025-10-17T15:13:03.376Z",
+        "createdAt": "2025-10-17T15:01:13.333Z",
+        "id": "EEJBoYQtj0Y2uZ8l",
+        "name": "Abdullah Altamimi <abod@abod.ws>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "da0fce3f-9e16-4d00-9b8f-7ed19f3dfec8"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": "Version 6793d7d2",
+    "description": ""
+  }
+}

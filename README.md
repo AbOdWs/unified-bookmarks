@@ -1,351 +1,243 @@
-![Personal Knowledge Brain](github_banner.svg)
-# 🧠 Personal Knowledge Brain
+![Unified Bookmarks](github_banner.svg)
 
-> A self-hosted personal knowledge pipeline that captures, organizes, and retrieves anything you save — links, voice notes, images — via Telegram and WhatsApp.
+# Unified Bookmarks
 
-**Built by [Abdullah Altamimi (@AbOd)](https://github.com/AbOdWs)**
+A self-hosted unified bookmarks system for Telegram, WhatsApp, and Obsidian. Send links, voice notes, or images. Hermes summarizes them, organizes them into Markdown, and lets you ask about them later.
 
----
+Built by **Abdullah Altamimi** · [X @AbOd](https://x.com/AbOd) · [First iPhone app: Aish Awfar](https://apps.abod.ws/aish)
 
-## العربية | Arabic
-
-### ما هو هذا المشروع؟
-
-نظام شخصي لحفظ المعرفة يعمل على خادمك الخاص. أرسل أي رابط أو ملاحظة صوتية أو صورة إلى بوت تيليغرام أو واتساب، وسيقوم النظام تلقائياً بتصنيفها وتلخيصها وحفظها في ملفات منظمة — تعمل كـ "دماغ" رقمي شخصي متصل بـ Obsidian.
-
-### المميزات
-
-- 🔗 **حفظ الروابط** — تصنيف تلقائي بالذكاء الاصطناعي + تلخيص
-- 🎤 **الملاحظات الصوتية** — تفريغ صوتي تلقائي (عربي وإنجليزي)
-- 🖼 **الصور** — تحليل بالذكاء الاصطناعي ووصف تلقائي
-- 📂 **التصنيف الذكي** — فئات مخصصة بالكامل
-- 🔍 **البحث بالأسئلة** — اسأل البوت عن أي شيء حفظته
-- ⏰ **التذكيرات** — `/remind 2weeks` على أي رابط
-- 📊 **التقارير** — ملخص يومي وأسبوعي
-- 👥 **المشاركة** — منح الضيوف وصولاً محدوداً لفئات معينة
-- 🧠 **Obsidian** — مزامنة تلقائية مع GitHub
-- 📱 **واتساب + تيليغرام** — يعمل على كلا المنصتين
-
-### الأوامر
-
-| الأمر | الوصف |
-|-------|--------|
-| أرسل رابطاً | حفظ وتصنيف تلقائي |
-| أرسل ملاحظة صوتية | تفريغ وحفظ |
-| أرسل صورة | تحليل وحفظ |
-| `/list <فئة>` | عرض الروابط المحفوظة |
-| `/tag <رابط> #وسم` | إضافة وسوم |
-| `/rules` | قواعد التصنيف |
-| `/suggest` | اقتراحات إعادة تنظيم |
-| `/rescan` | إعادة تطبيق القواعد |
-| `/remind 2weeks` | تذكير مستقبلي |
-| `/digest` | إعدادات الملخص اليومي |
-| `/invite` | دعوة ضيف |
-| `/guests` | عرض الضيوف |
-| `/revoke` | إلغاء وصول ضيف |
-| `/help` | عرض كل الأوامر |
-
-يسعدني تجربتك لتطبيقي الأول على ايفون apps.abod.ws/aish
+If this project helps you, you can use my [Hostinger referral link](https://apps.abod.ws/hostinger) when setting up your VPS.
 
 ---
 
 ## English
 
-### What is this?
+### Why I Built This
 
-A self-hosted personal knowledge pipeline running on your own VPS. Send any link, voice note, or image to a Telegram or WhatsApp bot — it automatically categorizes, summarizes, and stores everything in organized Markdown files. Ask the bot questions and it retrieves answers from your saved knowledge. Syncs with Obsidian as your visual brain.
+I was saving links in bookmarks, sending messages to myself, keeping screenshots, and dropping notes across apps. The problem was not saving information. The problem was finding it again.
 
-### Features
+Hermes turns Telegram and WhatsApp into a capture layer for your personal knowledge. It saves what you send, summarizes it with AI, places it into useful categories, and keeps everything in Markdown so you can browse it later in Obsidian.
 
-- 🔗 **Link saving** — AI-powered auto-categorization + summarization
-- 🎤 **Voice notes** — auto-transcription (Arabic & English)
-- 🖼 **Images** — AI vision analysis and description
-- 📂 **Smart categories** — fully custom, AI decides
-- 🔍 **Natural language queries** — ask anything about what you saved
-- ⏰ **Reminders** — `/remind 2weeks` on any entry
-- 📊 **Reports** — daily digest + weekly report
-- 👥 **Guest access** — share specific categories with family/friends
-- 🧠 **Obsidian sync** — auto-sync via GitHub
-- 📱 **WhatsApp + Telegram** — works on both
+### What It Can Save
 
-### Commands
+- **Links**: webpage, YouTube, TikTok, Instagram, X/Twitter, Reddit, and Telegram links
+- **Voice notes**: automatic transcription in Arabic, English, and more
+- **Images**: AI vision description and categorization
+- **Personal notes**: add context after any URL
+- **Reminders**: attach future reminders such as `/remind 2weeks`
 
-| Command | Description |
-|---------|-------------|
-| Send a URL | Auto-save and categorize |
-| Send a voice note | Transcribe and save |
-| Send an image | Analyze and save |
-| `/list <category>` | Browse saved links |
-| `/tag <url> #tag` | Add tags |
-| `/rules` | Manage categorization rules |
-| `/suggest` | AI reorganization suggestions |
-| `/rescan` | Re-apply rules to all entries |
-| `/remind 2weeks` | Set a future reminder |
-| `/digest` | Configure daily digest |
-| `/invite` | Invite a guest |
-| `/guests` | View active guests |
-| `/revoke` | Remove guest access |
-| `/help` | Show all commands |
+### Core Features
 
----
+- AI summarization and categorization
+- Tags and custom rules
+- Natural-language Q&A over saved knowledge
+- Daily digest and weekly report
+- Guest access for selected categories
+- Obsidian-friendly Markdown vault
+- Telegram and WhatsApp support
+- Low-cost self-hosted setup
 
-## Architecture
+### Demo
 
+```text
+You:
+https://example.com/article this is useful for my AI agent project /remind 2weeks
+
+Hermes:
+Saved to ai
+Tags: #agents #automation #research
+Summary: ...
+
+You later:
+What did I save about AI agents?
+
+Hermes:
+Here are the most relevant saved links...
 ```
+
+### Architecture
+
+```text
 Telegram / WhatsApp
-       ↓
-    n8n (workflows)
-       ↓
-  ┌────────────────────────────┐
-  │  Save link                 │  ← Firecrawl + yt-dlp + oEmbed
-  │  Transcribe voice          │  ← Groq Whisper API
-  │  Analyze image             │  ← Groq Vision
-  │  Answer questions          │  ← Groq LLaMA 3.3 70B
-  └────────────────────────────┘
-       ↓
-  Markdown files on VPS
-  /knowledge/travel.md
-  /knowledge/ai.md
-  /knowledge/tech.md
-  ...
-       ↓
-  GitHub (private repo)
-       ↓
-  Obsidian (Mac + iPhone)
+       |
+       v
+n8n workflows
+       |
+       +-- Save links       -> Firecrawl, yt-dlp, oEmbed
+       +-- Transcribe audio -> Groq Whisper
+       +-- Analyze images   -> Groq Vision
+       +-- Answer questions -> Groq LLaMA
+       |
+       v
+Markdown knowledge vault on VPS
+       |
+       v
+Private GitHub repo
+       |
+       v
+Obsidian on Mac / iPhone
 ```
 
----
+### Files Included
 
-## Requirements
+| File | Purpose |
+| --- | --- |
+| `README.md` | Project overview and setup guide |
+| `github_banner.svg` | GitHub banner |
+| `launch-post.md` | English/Arabic launch post |
+| `Bot_Commands_Reference_AR_EN.pdf` | Bot command reference |
+| `config.example.json` | Safe placeholder config |
+| `index.js` | WhatsApp bridge |
+| `package.json` | WhatsApp bridge dependencies |
+| `whisper-api.py` | Groq Whisper helper API |
+| `ytdlp-api.py` | Video metadata/transcript helper API |
+| `n8n-workflows/*.json` | n8n workflow exports |
 
-- VPS (4GB+ RAM, 20GB+ disk) — [Get Hostinger VPS](https://www.hostinger.com?REFERRALCODE=GIQKABOD9A2H)
-- [n8n](https://n8n.io) — workflow automation (self-hosted via Docker)
-- [Groq API](https://console.groq.com) — free LLM + Whisper (no cost for personal use)
-- [Firecrawl](https://firecrawl.dev) — web scraping (free tier: 500 pages/month)
-- Telegram Bot Token — from [@BotFather](https://t.me/BotFather)
-- GitHub account — for Obsidian sync
-- Obsidian — for visual knowledge browsing
+### Requirements
 
----
+- VPS with Ubuntu 24.04, 4 GB RAM recommended
+- n8n, self-hosted with Docker
+- Groq API key
+- Firecrawl API key
+- Telegram bot token from [@BotFather](https://t.me/BotFather)
+- Optional: WhatsApp number for the WhatsApp bridge
+- Optional: Obsidian for browsing the Markdown vault
 
-## Setup Guide
+### Setup Summary
 
-### Step 1 — Get a VPS
-
-Get a VPS with at least 4GB RAM. Recommended: [Hostinger KVM 4](https://www.hostinger.com?REFERRALCODE=GIQKABOD9A2H) (use this referral link for a discount).
-
-Install Ubuntu 24.04 when setting up.
-
-### Step 2 — Install n8n on your VPS
-
-Hostinger's panel makes this easy — use the **App Installer** to install n8n with one click. It sets up Docker, Traefik, and n8n automatically with SSL.
-
-### Step 3 — Get your API keys
-
-| Service | Where to get it | Cost |
-|---------|----------------|------|
-| Groq API | [console.groq.com](https://console.groq.com) → API Keys | Free |
-| Firecrawl | [firecrawl.dev](https://firecrawl.dev) → Dashboard | Free (500/mo) |
-| Telegram Bot | Message [@BotFather](https://t.me/BotFather) → /newbot | Free |
-
-### Step 4 — Create the knowledge folder
-
-SSH into your VPS (use Hostinger's browser terminal):
+1. Get a VPS. I used Hostinger; my referral link is [https://apps.abod.ws/hostinger](https://apps.abod.ws/hostinger).
+2. Install n8n on the VPS.
+3. Copy `config.example.json` to `/root/config.json` and fill in your own keys.
+4. Install the helper scripts:
 
 ```bash
-mkdir -p /root/knowledge
-chmod 777 /root/knowledge
-```
-
-### Step 5 — Create the config file
-
-```bash
-cp config.example.json /root/config.json
-nano /root/config.json
-```
-
-Fill in all your API keys and settings. Your Telegram user ID can be found by messaging [@userinfobot](https://t.me/userinfobot).
-
-### Step 6 — Install the VPS scripts
-
-```bash
-# Install dependencies
 pip3 install yt-dlp --break-system-packages
-
-# Copy scripts to VPS
 cp ytdlp-api.py /root/ytdlp-api.py
 cp whisper-api.py /root/whisper-api.py
-
-# Create systemd services
-cat << 'EOF' > /etc/systemd/system/ytdlp-api.service
-[Unit]
-Description=yt-dlp metadata API
-After=network.target
-
-[Service]
-ExecStart=/usr/bin/python3 /root/ytdlp-api.py
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-cat << 'EOF' > /etc/systemd/system/whisper-api.service
-[Unit]
-Description=Whisper transcription API
-After=network.target
-
-[Service]
-ExecStart=/usr/bin/python3 /root/whisper-api.py
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-systemctl daemon-reload
-systemctl enable ytdlp-api whisper-api
-systemctl start ytdlp-api whisper-api
 ```
 
-### Step 7 — Update n8n docker-compose
+5. Mount `/root/config.json` and `/root/knowledge` into n8n.
+6. Import the workflows from `n8n-workflows/*.json`.
+7. Add Telegram credentials to the Telegram nodes.
+8. Activate the workflows.
+9. Optional: run the WhatsApp bridge from `index.js`.
+10. Optional: sync `/root/knowledge` with a private GitHub repo and open it in Obsidian.
 
-Find your n8n docker-compose file:
-```bash
-find /docker -name "docker-compose.yml" | grep n8n
-```
+### Security Notes
 
-Add these environment variables and volume mounts:
+- Do not commit your real `config.json`.
+- Do not commit your knowledge vault.
+- Keep Telegram, Groq, Firecrawl, GitHub, and WhatsApp secrets private.
+- Use a private GitHub repo for your actual knowledge.
+- Keep n8n behind strong authentication and HTTPS.
+- Do not expose helper APIs directly to the public internet.
+- Replace broad permissions with stricter permissions after first setup.
 
-```yaml
-environment:
-  - NODE_FUNCTION_ALLOW_BUILTIN=*
-  - NODE_FUNCTION_ALLOW_EXTERNAL=*
+### Bot Commands
 
-volumes:
-  - /root/config.json:/home/node/config.json
-  - /root/knowledge:/home/node/knowledge
-  - /root/guests.json:/home/node/guests.json
-  - /root/rules.json:/home/node/rules.json
-  - /root/digest_settings.json:/home/node/digest_settings.json
-  - /root/pending_suggestions.json:/home/node/pending_suggestions.json
-```
+See [`Bot_Commands_Reference_AR_EN.pdf`](Bot_Commands_Reference_AR_EN.pdf) for the complete command reference.
 
-Create the supporting files:
-```bash
-echo "[]" > /root/guests.json
-echo "[]" > /root/rules.json
-echo "[]" > /root/pending_suggestions.json
-cat << 'EOF' > /root/digest_settings.json
-{"enabled":true,"time":"09:00","summary":true,"categories":true,"voice":true,"images":true,"stats":true,"motivation":true}
-EOF
-chmod 777 /root/guests.json /root/rules.json /root/pending_suggestions.json /root/digest_settings.json
-```
+### About Me
 
-Restart n8n:
-```bash
-cd /docker/n8n && docker compose down && docker compose up -d
-```
+Built by **Abdullah Altamimi**.
 
-### Step 8 — Find your Docker bridge IP
-
-```bash
-docker inspect <your-n8n-container-name> | grep Gateway
-```
-
-Update `ytdlp_api_url` and `whisper_api_url` in your config.json to use this IP instead of `172.19.0.1`.
-
-### Step 9 — Import the n8n workflows
-
-In n8n:
-1. Go to Workflows → Add workflow → ⋯ → Import from file
-2. Import `workflows/main-workflow.json`
-3. Import `workflows/reminders-workflow.json`
-4. Import `workflows/weekly-report-workflow.json`
-5. Add your Telegram credentials to the Telegram nodes
-6. Activate each workflow
-
-### Step 10 — Set up Obsidian sync (optional)
-
-1. Create a private GitHub repo named `my-brain`
-2. In your VPS knowledge folder:
-```bash
-cd /root/knowledge
-git init
-git remote add origin https://YOUR_USERNAME:YOUR_PAT@github.com/YOUR_USERNAME/my-brain.git
-git add . && git commit -m "initial" && git push -u origin main
-```
-3. Add a cron job for auto-push:
-```bash
-crontab -e
-# Add: */5 * * * * cd /root/knowledge && git add . && git commit -m "sync" --allow-empty && git push 2>/dev/null
-```
-4. In Obsidian: open `~/Documents/my-brain` as a vault, install Obsidian Git plugin, set auto-pull to 5 minutes
-
-### Step 11 — WhatsApp (optional)
-
-```bash
-cd /root
-mkdir whatsapp-bot && cd whatsapp-bot
-cp /path/to/repo/whatsapp-bot/index.js .
-cp /path/to/repo/whatsapp-bot/package.json .
-npm install
-```
-
-Install dependencies:
-```bash
-apt install -y chromium-browser
-apt install -y libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64
-```
-
-Set up as a service and scan QR code with a dedicated WhatsApp number.
+- X: [@AbOd](https://x.com/AbOd)
+- First iPhone app: [Aish Awfar](https://apps.abod.ws/aish)
+- VPS referral: [Hostinger](https://apps.abod.ws/hostinger)
 
 ---
 
-## Folder Structure
+## العربية
 
+### لماذا بنيت هذا المشروع؟
+
+كنت أحفظ الروابط في المفضلة، وأرسل لنفسي رسائل، وأحتفظ بالصور والملاحظات في أكثر من تطبيق. المشكلة لم تكن في الحفظ، بل في الرجوع للمعلومة وقت الحاجة.
+
+Hermes يحول تيليغرام وواتساب إلى طبقة التقاط للمعرفة الشخصية. أرسل رابطاً أو ملاحظة صوتية أو صورة، وسيقوم النظام بتلخيصها وتصنيفها وحفظها في ملفات Markdown مناسبة للتصفح داخل Obsidian.
+
+### ماذا يستطيع حفظه؟
+
+- **الروابط**: صفحات الويب ويوتيوب وتيك توك وإنستغرام و X وريديت وتيليغرام
+- **الملاحظات الصوتية**: تفريغ صوتي تلقائي بالعربية والإنجليزية وغيرها
+- **الصور**: وصف وتحليل بالذكاء الاصطناعي
+- **ملاحظاتك الشخصية**: أضف سياقاً بعد أي رابط
+- **التذكيرات**: مثل `/remind 2weeks`
+
+### المميزات الأساسية
+
+- تلخيص وتصنيف بالذكاء الاصطناعي
+- وسوم وقواعد تصنيف مخصصة
+- أسئلة طبيعية على المعرفة المحفوظة
+- ملخص يومي وتقرير أسبوعي
+- وصول محدود للضيوف حسب الفئات
+- ملفات Markdown متوافقة مع Obsidian
+- دعم تيليغرام وواتساب
+- تشغيل ذاتي بتكلفة منخفضة
+
+### مثال سريع
+
+```text
+أنت:
+https://example.com/article هذا مفيد لمشروع وكلاء الذكاء الاصطناعي /remind 2weeks
+
+Hermes:
+تم الحفظ في ai
+الوسوم: #agents #automation #research
+الملخص: ...
+
+أنت لاحقاً:
+ما الذي حفظته عن وكلاء الذكاء الاصطناعي؟
+
+Hermes:
+هذه أكثر الروابط المحفوظة صلة...
 ```
-/root/
-├── config.json              # Your API keys (never commit this)
-├── knowledge/               # Your saved links (never commit this)
-│   ├── travel.md
-│   ├── ai.md
-│   ├── tech.md
-│   └── ...
-├── guests.json              # Guest access list
-├── rules.json               # Categorization rules
-├── digest_settings.json     # Daily digest settings
-├── ytdlp-api.py             # Video metadata API (port 8765)
-├── whisper-api.py           # Transcription API (port 8766)
-└── whatsapp-bot/
-    └── index.js             # WhatsApp bot
-```
 
----
+### الملفات الموجودة
 
-## Cost Breakdown
+| الملف | الاستخدام |
+| --- | --- |
+| `README.md` | شرح المشروع وطريقة الإعداد |
+| `github_banner.svg` | بانر GitHub |
+| `launch-post.md` | منشور الإطلاق بالإنجليزية والعربية |
+| `Bot_Commands_Reference_AR_EN.pdf` | دليل أوامر البوت |
+| `config.example.json` | ملف إعدادات آمن بقيم وهمية |
+| `index.js` | جسر واتساب |
+| `package.json` | اعتماديات جسر واتساب |
+| `whisper-api.py` | خدمة تفريغ الصوت عبر Groq Whisper |
+| `ytdlp-api.py` | خدمة معلومات الفيديو والترجمة |
+| `n8n-workflows/*.json` | ملفات سير العمل الخاصة بـ n8n |
 
-| Service | Cost |
-|---------|------|
-| Hostinger VPS KVM 4 | ~$8/month |
-| Groq API | Free |
-| Firecrawl | Free (500 pages/month) |
-| Telegram | Free |
-| WhatsApp | Free (needs a dedicated number) |
-| **Total** | **~$8/month** |
+### ملخص الإعداد
 
----
+1. احصل على VPS. استخدمت Hostinger، وهذا رابط الإحالة الخاص بي: [https://apps.abod.ws/hostinger](https://apps.abod.ws/hostinger).
+2. ثبّت n8n على الخادم.
+3. انسخ `config.example.json` إلى `/root/config.json` وضع مفاتيحك الخاصة.
+4. ثبّت السكربتات المساعدة.
+5. اربط `/root/config.json` و `/root/knowledge` داخل n8n.
+6. استورد سير العمل من `n8n-workflows/*.json`.
+7. أضف بيانات تيليغرام إلى عقد تيليغرام داخل n8n.
+8. فعّل سير العمل.
+9. اختياري: شغّل جسر واتساب.
+10. اختياري: زامن مجلد المعرفة مع مستودع GitHub خاص وافتحه في Obsidian.
 
-## Credits
+### ملاحظات الأمان
 
-Built by [Abdullah Altamimi (@AbOd)](https://github.com/AbOdWs)
+- لا ترفع ملف `config.json` الحقيقي.
+- لا ترفع مجلد المعرفة الشخصي.
+- حافظ على سرية مفاتيح Telegram و Groq و Firecrawl و GitHub و WhatsApp.
+- استخدم مستودع GitHub خاصاً للمعرفة الفعلية.
+- اجعل n8n خلف تسجيل دخول قوي و HTTPS.
+- لا تكشف خدمات المساعدة مباشرة للإنترنت.
+- بعد الإعداد الأولي، استبدل الصلاحيات الواسعة بصلاحيات أضيق.
 
-If this helped you, consider using the [Hostinger referral link](https://www.hostinger.com?REFERRALCODE=GIQKABOD9A2H) when getting your VPS.
+### عن المطور
 
-Please check my first iOS App apps.abod.ws/aish
+بني بواسطة **Abdullah Altamimi**.
 
----
+- X: [@AbOd](https://x.com/AbOd)
+- تطبيقي الأول على الآيفون: [Aish Awfar](https://apps.abod.ws/aish)
+- رابط Hostinger للإحالة: [Hostinger](https://apps.abod.ws/hostinger)
 
 ## License
 
-MIT — use it, modify it, share it.
+MIT. Use it, modify it, and build your own second brain.

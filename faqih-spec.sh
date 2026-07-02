@@ -32,6 +32,7 @@ elif [ "$MODE" = "idea" ]; then
 استخدم Glob وGrep وRead لتحديد كل بطاقة في wiki/ ذات صلة بهذه الفكرة. لكل بطاقة ذات صلة اكتب: اسمها [[card-name]] + جملة واحدة تشرح الصلة بالفكرة.
 
 الخطوة ٢ — اكتب مستند الخطة في 01-Projects/_queue/<YYYY-MM-DD>-<slug>.md
+حيث <slug> إنجليزي قصير (≤ 30 حرفاً، حروف صغيرة وشرطات فقط — لا عربية، لأنه يُستخدم في أزرار تيليغرام محدودة الطول).
 بالترويسة YAML الكاملة:
 title: <عنوان موجز للفكرة>
 status: draft
@@ -132,27 +133,34 @@ if wiki_ref:
     parts.append(f'\n📚 <b>من قبوك:</b>\n{he(wiki_ref)}')
 if plan:
     parts.append(f'\n<b>الخطة:</b>\n{he(plan)}')
-parts.append('\nاختر أو راجع التفاصيل في Obsidian:')
-msg = '\n'.join(parts)
-
-# ── Obsidian deep link ───────────────────────────────────────────────────────
+# ── Obsidian deep link — shown as tap-to-copy text, NOT a button ─────────────
+# Telegram inline-keyboard url buttons accept only http(s)/tg:// URLs. An obsidian://
+# button url returns 400 BUTTON_URL_INVALID and drops the WHOLE message (buttons and
+# all). So the deep link lives in the body as <code> (tap-to-copy; opens Obsidian to
+# the exact note), and the clickable "open" button uses the GitHub web url when set.
 obs_file = f"01-Projects/_queue/{name}"
 obs_url  = (f"obsidian://open"
             f"?vault={urllib.parse.quote(vault)}"
             f"&file={urllib.parse.quote(obs_file)}")
+parts.append(f'\n📱 <b>افتح في Obsidian</b> (انسخ الرابط):\n<code>{he(obs_url)}</code>')
+parts.append('\nأو راجع الملاحظة واختر:')
+msg = '\n'.join(parts)
 
 # ── Inline keyboard ──────────────────────────────────────────────────────────
-keyboard = {
-    'inline_keyboard': [
-        [{'text': '📱 فتح في Obsidian', 'url': obs_url}],
-        [
-            {'text': '✅ اعتمد',        'callback_data': f'idea_approve:{name}'},
-            {'text': '🔄 أعد التفكير',  'callback_data': f'idea_rethink:{name}'},
-            {'text': '⏸ لاحقاً',        'callback_data': f'idea_hold:{name}'},
-            {'text': '🗑 تجاهل',         'callback_data': f'idea_discard:{name}'},
-        ]
-    ]
-}
+rows = []
+gh = (cfg.get('github_base', '') or '').rstrip('/')
+if gh:
+    gh_url = gh + '/' + '/'.join(urllib.parse.quote(p) for p in (obs_file + '.md').split('/'))
+    rows.append([{'text': '📄 افتح الملاحظة (GitHub)', 'url': gh_url}])
+rows.append([
+    {'text': '✅ اعتمد',       'callback_data': f'idea_approve:{name}'},
+    {'text': '🔄 أعد التفكير', 'callback_data': f'idea_rethink:{name}'},
+])
+rows.append([
+    {'text': '⏸ لاحقاً',       'callback_data': f'idea_hold:{name}'},
+    {'text': '🗑 تجاهل',        'callback_data': f'idea_discard:{name}'},
+])
+keyboard = {'inline_keyboard': rows}
 
 body = json.dumps({
     'chat_id': chat,

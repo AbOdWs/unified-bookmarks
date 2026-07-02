@@ -8,6 +8,9 @@
   "ytdlp_api_url": "http://x.x.x.x:xxxx",
   "whisper_api_url": "http://x.x.x.x:xxxx",
   "hermes_url": "http://x.x.x.x:xxxx",
+  "build_trigger_url": "http://172.19.0.1:8767",
+  "obsidian_vault_name": "my-brain",
+  "github_base": "https://github.com/YOUR_USERNAME/my-brain/blob/main",
   "guests_file": "/home/node/guests.json",
   "digest_settings_file": "/home/node/digest_settings.json",
   "pending_suggestions_file": "/home/node/pending_suggestions.json"

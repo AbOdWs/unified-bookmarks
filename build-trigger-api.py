@@ -1,5 +1,5 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import subprocess, json, os
+import subprocess, json, os, re, shutil
 
 LOCK = '/root/.build-wiki.lock'
 
@@ -13,6 +13,16 @@ def is_running():
         return True
     except Exception:
         return False
+
+
+def _update_frontmatter_status(doc_path, new_status):
+    if not os.path.exists(doc_path):
+        return False
+    content = open(doc_path).read()
+    content = re.sub(r'^status:\s*\S+', f'status: {new_status}', content, flags=re.MULTILINE)
+    with open(doc_path, 'w') as f:
+        f.write(content)
+    return True
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -30,7 +40,7 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get('Content-Length', 0))
         raw = self.rfile.read(length).decode('utf-8', 'replace') if length else ''
 
-        # فقيه planning endpoints — pass the idea/question via body {idea}
+        # ── فقيه planning endpoints ───────────────────────────────────────────
         if path.endswith('spec') or path.endswith('research'):
             try:
                 idea = json.loads(raw).get('idea', '') if raw else ''
@@ -45,7 +55,101 @@ class Handler(BaseHTTPRequestHandler):
             self._respond(200, {'started': True, 'agent': 'faqih', 'mode': mode})
             return
 
-        # courier (optional {topic}) vs build-wiki
+        # ── Ideas pipeline ────────────────────────────────────────────────────
+
+        # POST /idea  {idea: "text"}  — write to raw/ideas/ and trigger فقيه
+        if path.endswith('/idea'):
+            try:
+                data = json.loads(raw) if raw else {}
+                idea = data.get('idea', '').strip()
+            except Exception:
+                idea = raw.strip()
+            if not idea:
+                self._respond(400, {'error': 'no idea provided'})
+                return
+            ideas_dir = '/root/knowledge/raw/ideas'
+            os.makedirs(ideas_dir, exist_ok=True)
+            date_str = subprocess.check_output(['date', '+%Y-%m-%d']).decode().strip()
+            slug = re.sub(r'[^\w؀-ۿ-]', '-', idea[:40].lower()).strip('-')
+            fname = f"{ideas_dir}/{date_str}-{slug}.md"
+            with open(fname, 'w') as f:
+                f.write(f"---\ndate: {date_str}\nsource: telegram\n---\n\n{idea}\n")
+            with open('/root/.faqih-request.txt', 'w') as f:
+                f.write(idea)
+            subprocess.Popen(['/bin/bash', '/root/faqih-spec.sh', 'idea'],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+            self._respond(200, {'started': True, 'agent': 'فقيه', 'mode': 'idea'})
+            return
+
+        # POST /idea-approve  {slug: "filename"}  — approve plan and trigger وكيل
+        if path.endswith('/idea-approve'):
+            try:
+                slug = json.loads(raw).get('slug', '') if raw else ''
+            except Exception:
+                slug = ''
+            doc = f"/root/knowledge/01-Projects/_queue/{slug}.md"
+            updated = _update_frontmatter_status(doc, 'approved')
+            subprocess.Popen(['/bin/bash', '/root/idea-execute.sh'],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+            self._respond(200, {'started': True, 'agent': 'وكيل', 'doc_updated': updated})
+            return
+
+        # POST /idea-hold  {slug: "filename"}  — mark status: hold
+        if path.endswith('/idea-hold'):
+            try:
+                slug = json.loads(raw).get('slug', '') if raw else ''
+            except Exception:
+                slug = ''
+            doc = f"/root/knowledge/01-Projects/_queue/{slug}.md"
+            updated = _update_frontmatter_status(doc, 'hold')
+            self._respond(200, {'held': True, 'doc_updated': updated})
+            return
+
+        # POST /idea-discard  {slug: "filename"}  — archive the plan
+        if path.endswith('/idea-discard'):
+            try:
+                slug = json.loads(raw).get('slug', '') if raw else ''
+            except Exception:
+                slug = ''
+            doc = f"/root/knowledge/01-Projects/_queue/{slug}.md"
+            archive = f"/root/knowledge/01-Projects/_archive/{slug}.md"
+            discarded = False
+            if os.path.exists(doc):
+                os.makedirs(os.path.dirname(archive), exist_ok=True)
+                shutil.move(doc, archive)
+                discarded = True
+            self._respond(200, {'discarded': discarded})
+            return
+
+        # POST /idea-rethink  {slug: "filename", feedback: "text"}  — re-run فقيه with feedback
+        if path.endswith('/idea-rethink'):
+            try:
+                data = json.loads(raw) if raw else {}
+                slug = data.get('slug', '')
+                feedback = data.get('feedback', '').strip()
+            except Exception:
+                slug = feedback = ''
+            doc = f"/root/knowledge/01-Projects/_queue/{slug}.md"
+            original = ''
+            if os.path.exists(doc):
+                try:
+                    original = open(doc).read()
+                except Exception:
+                    pass
+            combined = original
+            if feedback:
+                combined += f"\n\n## ملاحظة المراجعة\n{feedback}"
+            with open('/root/.faqih-request.txt', 'w') as f:
+                f.write(combined or feedback)
+            subprocess.Popen(['/bin/bash', '/root/faqih-spec.sh', 'idea'],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+            self._respond(200, {'started': True, 'agent': 'فقيه', 'mode': 'rethink'})
+            return
+
+        # ── courier / build-wiki ──────────────────────────────────────────────
         if path.endswith('courier'):
             try:
                 topic = json.loads(raw).get('topic', '') if raw else ''

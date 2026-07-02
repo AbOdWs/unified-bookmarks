@@ -67,7 +67,10 @@ class Handler(BaseHTTPRequestHandler):
             if not idea:
                 self._respond(400, {'error': 'no idea provided'})
                 return
-            ideas_dir = '/root/knowledge/raw/ideas'
+            # Archive the raw idea straight into processed/ (not the top-level watch dir)
+            # so the cron watcher — which scans raw/ideas/*.md — can't pick it up and run
+            # فقيه a second time. فقيه reads the text from .faqih-request.txt below anyway.
+            ideas_dir = '/root/knowledge/raw/ideas/processed'
             os.makedirs(ideas_dir, exist_ok=True)
             date_str = subprocess.check_output(['date', '+%Y-%m-%d']).decode().strip()
             slug = re.sub(r'[^\w؀-ۿ-]', '-', idea[:40].lower()).strip('-')

@@ -123,6 +123,64 @@ cp whisper-api.py /root/whisper-api.py
 9. Optional: run the WhatsApp bridge from `index.js`.
 10. Optional: sync `/root/knowledge` with a private GitHub repo and open it in Obsidian.
 
+### Ideas Pipeline (فقيه → approval → وكيل)
+
+Drop a raw idea and get back an execution plan — cross-referenced against everything
+already in your vault — delivered to Telegram with one-tap action buttons. Nothing is
+built until you approve.
+
+```
+Drop idea → فقيه reads it → searches wiki/ for what you already know
+          → writes a plan (01-Projects/_queue/, status: draft)
+          → Telegram message with buttons → you decide
+                ✅ Approve → وكيل builds it (isolated branch + PR, never deploys)
+                🔄 Rethink → re-plans from a different angle
+                ⏸ Hold    → status: hold, resurfaces in the daily brief
+                🗑 Discard → archived
+```
+
+**Three ways to drop an idea**
+
+| Method | How |
+|--------|-----|
+| Telegram | `/idea <your idea>` (a long message with several ideas becomes several plans) |
+| Vault    | Write a `.md`/`.txt` file into `raw/ideas/` — the cron watcher picks it up |
+| iOS Notes | An Apple Shortcut that sends note text as `/idea …` to the bot |
+
+**One idea or many:** `/idea` accepts a long message containing multiple ideas. فقيه
+separates them (up to 5 per message) and sends one plan — with its own buttons — for
+each. A single idea, however long, stays one plan.
+
+**Files this adds**
+
+| File | Role |
+|------|------|
+| `raw/ideas/` | Drop zone (top level watched; `processed/` archives handled ideas) |
+| `idea-watcher.sh` | Cron watcher; hands new idea files to فقيه, then archives them |
+| `faqih-spec.sh` (`idea` mode) | Scans `wiki/`, writes the plan, sends the Telegram card |
+| `idea-execute.sh` | Authorised وكيل wrapper — the Approve button is the human gate |
+| `build-trigger-api.py` | `/idea` `/idea-approve` `/idea-hold` `/idea-discard` `/idea-rethink` |
+| `main-workflow-v3.json` | `callback_query` handling + `/idea` and `/rethink` commands |
+
+**Setup**
+
+1. Copy the scripts to `/root/` and make them executable:
+   `faqih-spec.sh`, `build-trigger-api.py`, `idea-watcher.sh`, `idea-execute.sh`.
+2. Create the drop zone: `mkdir -p /root/knowledge/raw/ideas/processed`.
+3. Add to `config.json`: `obsidian_vault_name` (your exact vault name) and `github_base`
+   (`https://github.com/<user>/<repo>/blob/main`). `build_trigger_url` should already exist.
+4. Cron: `*/5 * * * * /bin/bash /root/idea-watcher.sh`, then
+   `systemctl restart build-trigger-api`.
+5. In n8n, import the updated `main-workflow-v3.json`, re-attach Telegram credentials,
+   and activate. This adds the `callback_query` handling the buttons need.
+
+> **Note — Obsidian link:** Telegram only allows `http(s)`/`tg://` on inline buttons, so
+> the plan's clickable button opens the note on GitHub; the `obsidian://` deep link is
+> included in the message body as tap-to-copy text (opens Obsidian to the exact note).
+>
+> **Note — Approve triggers a real build.** Approving runs وكيل for real (isolated branch
+> + PR, no deploy). The button press *is* the human approval gate — review the first build.
+
 ### Security Notes
 
 - Do not commit your real `config.json`.

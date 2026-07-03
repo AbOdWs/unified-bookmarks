@@ -11,6 +11,8 @@ export PATH="$HOME/.local/bin:$PATH"
 export CLAUDE_CODE_OAUTH_TOKEN=$(tr -d '[:space:]' < /root/.claude-token)
 LOG=/root/vault-audit.log
 CFG=/root/config.json
+# Model for vault work. Override per-run with:  VAULT_MODEL=claude-sonnet-5 bash /root/vault-audit.sh
+MODEL="${VAULT_MODEL:-claude-fable-5}"
 cd /root/knowledge || exit 1
 
 DATE=$(date -u +%Y-%m-%d)
@@ -51,8 +53,8 @@ TASK="أنت مدقّق القبو (vault auditor). مهمتك تحليل الق
 
 اجعله عملياً وموجزاً ومحدداً (اذكر أسماء ملفات فعلية، لا كلاماً عاماً). لا تقترح تنفيذاً الآن — التقرير فقط."
 
-echo "$(date -u +%FT%TZ) START vault-audit" >> "$LOG"
-OUT=$(timeout 1800 claude -p "$TASK" --allowedTools "Read,Glob,Grep" 2>&1)
+echo "$(date -u +%FT%TZ) START vault-audit (model $MODEL)" >> "$LOG"
+OUT=$(timeout 1800 claude -p "$TASK" --model "$MODEL" --allowedTools "Read,Glob,Grep" 2>&1)
 rc=$?
 echo "$(date -u +%FT%TZ) END vault-audit (rc $rc)" >> "$LOG"
 

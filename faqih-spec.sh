@@ -102,103 +102,15 @@ NEWFILES=$(comm -13 <(printf '%s\n' "$BEFORE") <(printf '%s\n' "$AFTER") | sed '
 [ -z "$NEWFILES" ] && NEWFILES=$(ls -t "$QUEUE_DIR"/*.md 2>/dev/null | head -1)
 NAMES=$(while IFS= read -r f; do [ -n "$f" ] && basename "$f" .md; done <<< "$NEWFILES")
 
-export FAQIH_NAMES="$NAMES"
-export FAQIH_MODE="$HEAD"
+# header first when فقيه split one message into several plans, so it doesn't look like a glitch
+COUNT=$(printf '%s\n' "$NAMES" | sed '/^$/d' | wc -l | tr -d ' ')
+if [ "$COUNT" -gt 1 ]; then
+  curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+    --data-urlencode "chat_id=${CHAT}" \
+    --data-urlencode "text=🧠 استخرج فقيه ${COUNT} أفكار من رسالتك — خطة لكل واحدة:" >/dev/null
+fi
 
-python3 - << 'PYEOF'
-import json, urllib.request, urllib.parse, sys, os, re
-
-cfg   = json.load(open('/root/config.json'))
-token = cfg['telegram_bot_token']
-chat  = str(cfg['telegram_chat_id'])
-vault = cfg.get('obsidian_vault_name', 'my-brain')
-gh    = (cfg.get('github_base', '') or '').rstrip('/')
-names = [n for n in os.environ.get('FAQIH_NAMES', '').split('\n') if n.strip()]
-
-if not names:
-    sys.exit(0)
-
-
-def he(s):
-    return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-
-
-def post(payload):
-    req = urllib.request.Request(
-        f'https://api.telegram.org/bot{token}/sendMessage',
-        data=json.dumps(payload).encode(),
-        headers={'Content-Type': 'application/json'})
-    try:
-        urllib.request.urlopen(req, timeout=10)
-    except Exception as e:
-        print(f'notify error: {e}', file=sys.stderr)
-
-
-def send_for(name):
-    # ── Read the generated plan for a preview ────────────────────────────────
-    doc_path = f"/root/knowledge/01-Projects/_queue/{name}.md"
-    goal = wiki_ref = plan = ''
-    try:
-        content = open(doc_path).read()
-
-        def section(text, heading):
-            m = re.search(r'## ' + re.escape(heading) + r'\n(.*?)(?=\n## |\Z)', text, re.DOTALL)
-            return m.group(1).strip() if m else ''
-        goal     = section(content, 'الهدف')[:150]
-        wiki_ref = section(content, 'ما تعرفه مسبقاً')[:350]
-        plan     = section(content, 'الخطة')[:500]
-    except Exception:
-        pass
-
-    parts = ['📋 <b>خطة فقيه</b>']
-    if goal:
-        parts.append(f'\n🎯 <b>الهدف:</b> {he(goal)}')
-    if wiki_ref:
-        parts.append(f'\n📚 <b>من قبوك:</b>\n{he(wiki_ref)}')
-    if plan:
-        parts.append(f'\n<b>الخطة:</b>\n{he(plan)}')
-
-    # ── Obsidian deep link — shown as tap-to-copy text, NOT a button ──────────
-    # Telegram inline-keyboard url buttons accept only http(s)/tg:// URLs. An
-    # obsidian:// button url returns 400 BUTTON_URL_INVALID and drops the WHOLE
-    # message. So the deep link lives in the body as <code> (tap-to-copy; opens
-    # Obsidian to the exact note); the clickable button uses the GitHub web url.
-    obs_file = f"01-Projects/_queue/{name}"
-    obs_url  = (f"obsidian://open"
-                f"?vault={urllib.parse.quote(vault)}"
-                f"&file={urllib.parse.quote(obs_file)}")
-    parts.append(f'\n📱 <b>افتح في Obsidian</b> (انسخ الرابط):\n<code>{he(obs_url)}</code>')
-    parts.append('\nأو راجع الملاحظة واختر:')
-    msg = '\n'.join(parts)
-
-    # ── Inline keyboard ──────────────────────────────────────────────────────
-    rows = []
-    if gh:
-        gh_url = gh + '/' + '/'.join(urllib.parse.quote(p) for p in (obs_file + '.md').split('/'))
-        rows.append([{'text': '📄 افتح الملاحظة (GitHub)', 'url': gh_url}])
-    rows.append([
-        {'text': '✅ اعتمد',       'callback_data': f'idea_approve:{name}'},
-        {'text': '🔄 أعد التفكير', 'callback_data': f'idea_rethink:{name}'},
-    ])
-    rows.append([
-        {'text': '⏸ لاحقاً',       'callback_data': f'idea_hold:{name}'},
-        {'text': '🗑 تجاهل',        'callback_data': f'idea_discard:{name}'},
-    ])
-
-    post({
-        'chat_id': chat,
-        'text': msg,
-        'parse_mode': 'HTML',
-        'reply_markup': {'inline_keyboard': rows},
-        'disable_web_page_preview': True,
-    })
-
-
-# a header first when فقيه split one message into several plans, so it doesn't look like a glitch
-if len(names) > 1:
-    post({'chat_id': chat, 'parse_mode': 'HTML',
-          'text': f'🧠 استخرج فقيه <b>{len(names)}</b> أفكار من رسالتك — خطة لكل واحدة:'})
-
-for nm in names:
-    send_for(nm)
-PYEOF
+# one card per new plan; plan-notify.py assigns a stable #code and builds the buttons
+while IFS= read -r nm; do
+  [ -n "$nm" ] && NAME="$nm" python3 /root/plan-notify.py
+done <<< "$NAMES"

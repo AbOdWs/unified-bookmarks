@@ -1,7 +1,37 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import subprocess, json, os, re, shutil
+import subprocess, json, os, re, shutil, glob, urllib.request, urllib.parse
 
 LOCK = '/root/.build-wiki.lock'
+PROJECTS = '/root/knowledge/01-Projects'
+
+
+def _tg(text):
+    try:
+        cfg = json.load(open('/root/config.json'))
+        data = urllib.parse.urlencode({'chat_id': cfg['telegram_chat_id'], 'text': text}).encode()
+        urllib.request.urlopen('https://api.telegram.org/bot' + cfg['telegram_bot_token'] + '/sendMessage',
+                               data=data, timeout=10)
+    except Exception:
+        pass
+
+
+def resume_by_code(code):
+    """Find the plan whose frontmatter `code:` matches, and re-send its card."""
+    code = code.upper()
+    for f in glob.glob(f'{PROJECTS}/**/*.md', recursive=True):
+        try:
+            m = re.search(r'^code:\s*(\S+)', open(f, encoding='utf-8').read(), re.MULTILINE)
+        except Exception:
+            m = None
+        if m and m.group(1).upper() == code:
+            name = os.path.basename(f)[:-3]
+            subprocess.Popen(['python3', '/root/plan-notify.py'],
+                             env={**os.environ, 'NAME': name},
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+            return True
+    _tg(f'لم أجد خطة بالكود #{code}. اكتب /idea <فكرة> لبدء واحدة جديدة.')
+    return False
 
 
 def is_running():
@@ -66,6 +96,12 @@ class Handler(BaseHTTPRequestHandler):
                 idea = raw.strip()
             if not idea:
                 self._respond(400, {'error': 'no idea provided'})
+                return
+            # "/idea #CODE" — resume an existing plan (re-send its card) instead of creating one
+            mcode = re.match(r'^#\s*([0-9A-Za-z]{2,8})$', idea.strip())
+            if mcode:
+                found = resume_by_code(mcode.group(1))
+                self._respond(200, {'resumed': found, 'code': mcode.group(1).upper()})
                 return
             # Archive the raw idea straight into processed/ (not the top-level watch dir)
             # so the cron watcher — which scans raw/ideas/*.md — can't pick it up and run

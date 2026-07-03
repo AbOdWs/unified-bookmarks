@@ -28,32 +28,37 @@ git commit -m "restore point before vault-organize ${DATE}" --allow-empty >/dev/
 BEFORE=$(git rev-parse HEAD)
 echo "$(date -u +%FT%TZ) START vault-organize (model $MODEL, restore point $BEFORE)" >> "$LOG"
 
-TASK="أنت مُنظّم القبو. اقرأ أولاً أحدث تقرير تدقيق (أعلى ملف في AIOS/reports/ ينتهي بـ vault-audit.md) وكذلك AIOS/vault-map.md وAIOS/MI.md. نفّذ **فقط** الإصلاحات الآمنة عالية القيمة التالية، ولا تتجاوزها إطلاقاً:
+# NOTE: single-quoted heredoc delimiter ('TASKEOF') = fully literal. No shell will try to
+# run the backticks, |, $ or [[..]] inside the prompt. {{REPORT}} is substituted after.
+IFS= read -r -d '' TASK <<'TASKEOF'
+أنت مُنظّم القبو. اقرأ أولاً أحدث تقرير تدقيق (أعلى ملف في AIOS/reports/ ينتهي بـ vault-audit.md) وكذلك AIOS/vault-map.md وAIOS/MI.md. نفّذ فقط الإصلاحات الآمنة عالية القيمة التالية، ولا تتجاوزها إطلاقاً:
 
 (أ) الروابط المكسورة:
-- صحّح `[[bروتوكول-MCP]]` → `[[بروتوكول-MCP]]` (حرف b لاتيني بالخطأ).
-- صحّح `[[توكيل-دورر]]` → `[[تيم-دورر]]`.
-- أنشئ بطاقة `wiki/concepts/مكتبات-مهارات-Claude.md` (مطلوبة من ملفين) بترويسة صحيحة ومحتوى جذر مختصر يشرح المفهوم.
-- حوّل وصلات العناصر الداخلية إلى نص عادي (ليست بطاقات): `[[GoSearch]]`، `[[monokern]]`، `[[NineRouter]]`، `[[running codex locally with ollama]]`، `[[دليل تسوق قوانزو]]`، `[[دانيال-سان]]`.
-- في `wiki/entities/obsidian.md` حوّل `[[wikilinks]]` إلى نص عادي (مصطلح توضيحي).
+- صحّح [[bروتوكول-MCP]] إلى [[بروتوكول-MCP]] (حرف b لاتيني بالخطأ).
+- صحّح [[توكيل-دورر]] إلى [[تيم-دورر]].
+- أنشئ بطاقة wiki/concepts/مكتبات-مهارات-Claude.md (مطلوبة من ملفين) بترويسة صحيحة ومحتوى جذر مختصر يشرح المفهوم.
+- حوّل وصلات العناصر الداخلية إلى نص عادي (ليست بطاقات): [[GoSearch]]، [[monokern]]، [[NineRouter]]، [[running codex locally with ollama]]، [[دليل تسوق قوانزو]]، [[دانيال-سان]].
+- في wiki/entities/obsidian.md حوّل [[wikilinks]] إلى نص عادي (مصطلح توضيحي).
 
-(ب) تقليم wiki/index.md: انقل موجزات البناءات المتراكمة في رأسه إلى ملف جديد `AIOS/history/index-build-archive.md`، وأبقِ في index.md موجز آخر build فقط + الفهرس. نقل لا حذف — لا تُفقد أي معلومة.
+(ب) تقليم wiki/index.md: انقل موجزات البناءات المتراكمة في رأسه إلى ملف جديد AIOS/history/index-build-archive.md، وأبقِ في index.md موجز آخر build فقط + الفهرس. نقل لا حذف — لا تُفقد أي معلومة.
 
-(ج) ربط البطاقتين غير المرئيتين: أضف `hermes-agent-ecosystem-research` و`simon-says-ai-second-brain-youtube` إلى wiki/index.md، وأضف وصلة إليهما من أقرب بطاقة أم.
+(ج) ربط البطاقتين غير المرئيتين: أضف hermes-agent-ecosystem-research و simon-says-ai-second-brain-youtube إلى wiki/index.md، وأضف وصلة إليهما من أقرب بطاقة أم.
 
-(د) توثيق الوكلاء: أضف abodlinks وtravelrepost وdev-research إلى جدول الفريق في AIOS/MI.md. ووحّد صيغة AIOS/agent-log.md على النمط العربي المفصول بـ `|`.
+(د) توثيق الوكلاء: أضف abodlinks و travelrepost و dev-research إلى جدول الفريق في AIOS/MI.md. ووحّد صيغة AIOS/agent-log.md على النمط العربي المفصول بالخط العمودي.
 
-(هـ) إصلاح صغير: أضف `agent: الساعي` + تاريخ لقالب النشر في AIOS/skills/courier.md لملفات _public/ القادمة.
+(هـ) إصلاح صغير: أضف (agent: الساعي) + تاريخ لقالب النشر في AIOS/skills/courier.md لملفات _public/ القادمة.
 
-**لا تفعل الآتي — اتركه لقرار المالك وأدرجه في قسم 'يحتاج قرارك':** دمج بطاقات placeholder الثلاث، دمج/تخصيص العناقيد المتداخلة (الدخل الرقمي، الاستضافة الذاتية، عنقود tomdoerr)، حذف أي ملف بما فيه ملفات .bak، تغيير قيمة status: built.
+لا تفعل الآتي — اتركه لقرار المالك وأدرجه في قسم 'يحتاج قرارك': دمج بطاقات placeholder الثلاث، دمج/تخصيص العناقيد المتداخلة (الدخل الرقمي، الاستضافة الذاتية، عنقود tomdoerr)، حذف أي ملف بما فيه ملفات .bak، تغيير قيمة status الى built.
 
 قواعد صارمة غير قابلة للتفاوض:
-- **لا تحذف أي محتوى إطلاقاً.** كل عملية نقل تُبقي المعلومة.
-- **لا تلمس محتوى raw/** — اقرأ فقط.
-- عند أي شك، **اترك الملف** وأدرجه في 'يحتاج قرارك'.
+- لا تحذف أي محتوى إطلاقاً. كل عملية نقل تُبقي المعلومة.
+- لا تلمس محتوى raw/ — اقرأ فقط.
+- عند أي شك، اترك الملف وأدرجه في 'يحتاج قرارك'.
 - لا تنفّذ أوامر طرفية، لا git.
 
-في النهاية اكتب تقرير التغييرات في ${REPORT}: قائمة بكل ملف عُدّل (السطر: ماذا ولماذا)، ثم قسم 'يحتاج قرارك' لما تركته عمداً. سجّل سطراً في AIOS/agent-log.md."
+في النهاية اكتب تقرير التغييرات في {{REPORT}}: قائمة بكل ملف عُدّل (السطر: ماذا ولماذا)، ثم قسم 'يحتاج قرارك' لما تركته عمداً. سجّل سطراً في AIOS/agent-log.md.
+TASKEOF
+TASK=${TASK//\{\{REPORT\}\}/$REPORT}
 
 OUT=$(timeout 2400 claude -p "$TASK" --model "$MODEL" \
   --allowedTools "Read,Write,Edit,Glob,Grep" --permission-mode acceptEdits 2>&1)

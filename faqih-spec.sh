@@ -98,8 +98,18 @@ fi
 # spec and idea modes: notify for EACH new plan doc فقيه created (idea mode can yield several)
 AFTER=$(ls "$QUEUE_DIR"/*.md 2>/dev/null | sort)
 NEWFILES=$(comm -13 <(printf '%s\n' "$BEFORE") <(printf '%s\n' "$AFTER") | sed '/^$/d')
-# fallback: if none detected as new (e.g. فقيه edited an existing draft), use the newest doc
-[ -z "$NEWFILES" ] && NEWFILES=$(ls -t "$QUEUE_DIR"/*.md 2>/dev/null | head -1)
+# فقيه made NO new plan (a duplicate, a blocker like an unreadable link, a needs-info
+# case, or it edited an existing draft). Relay its ACTUAL message — never re-send the
+# newest card (that old fallback made a 2nd idea show the 1st idea's plan). This also
+# means a rate-limit ("session limit · resets …") now reaches you instead of silence.
+if [ -z "$NEWFILES" ]; then
+  RELAY=$(printf '%s' "$OUT" | tail -c 3500)
+  curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+    --data-urlencode "chat_id=${CHAT}" \
+    --data-urlencode "text=📋 فقيه:
+${RELAY}" >/dev/null
+  exit 0
+fi
 NAMES=$(while IFS= read -r f; do [ -n "$f" ] && basename "$f" .md; done <<< "$NEWFILES")
 
 # header first when فقيه split one message into several plans, so it doesn't look like a glitch

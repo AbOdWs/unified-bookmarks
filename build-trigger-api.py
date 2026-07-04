@@ -34,6 +34,66 @@ def resume_by_code(code):
     return False
 
 
+def find_slug_by_code(code):
+    """Return the plan slug (basename, no .md) whose frontmatter code: matches, else None."""
+    code = code.upper()
+    for f in glob.glob(f'{PROJECTS}/**/*.md', recursive=True):
+        try:
+            m = re.search(r'^code:\s*(\S+)', open(f, encoding='utf-8').read(), re.MULTILINE)
+        except Exception:
+            m = None
+        if m and m.group(1).upper() == code:
+            return os.path.basename(f)[:-3]
+    return None
+
+
+# text-command approval (no n8n callbacks): "/idea <keyword> #CODE [feedback]"
+_IDEA_ACTIONS = {
+    'approve': 'approve', 'موافق': 'approve', 'موافقة': 'approve', 'اعتمد': 'approve', 'أعتمد': 'approve', 'ok': 'approve',
+    'hold': 'hold', 'لاحقا': 'hold', 'لاحقاً': 'hold', 'تأجيل': 'hold', 'أجل': 'hold',
+    'discard': 'discard', 'تجاهل': 'discard', 'احذف': 'discard', 'حذف': 'discard',
+    'rethink': 'rethink', 'أعد': 'rethink', 'اعد': 'rethink', 'راجع': 'rethink',
+}
+
+
+def apply_idea_action(action, code, feedback=''):
+    """Do the same thing the inline buttons do, resolved by #code, and confirm via Telegram."""
+    slug = find_slug_by_code(code)
+    C = code.upper()
+    if not slug:
+        _tg(f'لم أجد خطة بالكود #{C}. أرسل /idea #{C} للتأكد، أو /idea <فكرة> لبدء جديدة.')
+        return {'ok': False, 'reason': 'code not found', 'code': C}
+    doc = f'/root/knowledge/01-Projects/_queue/{slug}.md'
+    if action == 'approve':
+        _update_frontmatter_status(doc, 'approved')
+        subprocess.Popen(['/bin/bash', '/root/idea-execute.sh'],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        _tg(f'✅ اعتُمدت #{C} — وكيل بدأ التنفيذ على فرع معزول. ستصلك النتيجة عند الانتهاء.')
+        return {'ok': True, 'action': 'approve', 'slug': slug}
+    if action == 'hold':
+        _update_frontmatter_status(doc, 'hold')
+        _tg(f'⏸ حُفظت #{C} بحالة hold. أرسل /idea #{C} لفتحها لاحقاً.')
+        return {'ok': True, 'action': 'hold', 'slug': slug}
+    if action == 'discard':
+        archive = f'/root/knowledge/01-Projects/_archive/{slug}.md'
+        if os.path.exists(doc):
+            os.makedirs(os.path.dirname(archive), exist_ok=True)
+            shutil.move(doc, archive)
+        _tg(f'🗑 تجاهلت #{C} (نُقلت إلى الأرشيف).')
+        return {'ok': True, 'action': 'discard', 'slug': slug}
+    if action == 'rethink':
+        original = open(doc).read() if os.path.exists(doc) else ''
+        combined = original + (f'\n\n## ملاحظة المراجعة\n{feedback}' if feedback else '')
+        with open('/root/.faqih-request.txt', 'w') as f:
+            f.write(combined or feedback or slug)
+        subprocess.Popen(['/bin/bash', '/root/faqih-spec.sh', 'idea'],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        tail = ' مع ملاحظتك' if feedback else ''
+        _tg(f'🔄 أعيد التفكير في #{C}{tail} — ستصلك خطة محدّثة خلال دقائق.')
+        return {'ok': True, 'action': 'rethink', 'slug': slug}
+    return {'ok': False, 'reason': 'unknown action'}
+
+
 def is_running():
     if not os.path.exists(LOCK):
         return False
@@ -102,6 +162,13 @@ class Handler(BaseHTTPRequestHandler):
             if mcode:
                 found = resume_by_code(mcode.group(1))
                 self._respond(200, {'resumed': found, 'code': mcode.group(1).upper()})
+                return
+            # "/idea <keyword> #CODE [feedback]" — approve/hold/discard/rethink by text (no buttons)
+            mact = re.match(r'^(\S+)\s+#\s*([0-9A-Za-z]{2,8})\b\s*(.*)$', idea.strip(), re.DOTALL)
+            if mact and _IDEA_ACTIONS.get(mact.group(1).strip().lower()):
+                result = apply_idea_action(_IDEA_ACTIONS[mact.group(1).strip().lower()],
+                                           mact.group(2), mact.group(3).strip())
+                self._respond(200, result)
                 return
             # Archive the raw idea straight into processed/ (not the top-level watch dir)
             # so the cron watcher — which scans raw/ideas/*.md — can't pick it up and run

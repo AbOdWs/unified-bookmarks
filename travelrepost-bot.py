@@ -91,8 +91,9 @@ def save_to_vault(url, platform, author, text):
     """Mirror abodlinkbot: drop the link into raw/inbox/ so ورّاق digests it into the
     knowledge vault. Fire-and-forget — never breaks the repost flow. Skips duplicates."""
     try:
-        kdir = CFG.get("knowledge_dir", "/root/knowledge")
-        raw = os.path.join(kdir, "raw")
+        # travelrepost runs on the HOST; the vault is /root/knowledge here.
+        # (config.knowledge_dir = /home/node/knowledge is the n8n *container* path.)
+        raw = "/root/knowledge/raw"
         # dedupe: if the URL is already saved anywhere under raw/, do nothing
         for root, _, files in os.walk(raw):
             for fn in files:

@@ -87,8 +87,51 @@ def draft_quote(url, platform, author, text):
         return ""
 
 
+def save_to_vault(url, platform, author, text):
+    """Mirror abodlinkbot: drop the link into raw/inbox/ so ورّاق digests it into the
+    knowledge vault. Fire-and-forget — never breaks the repost flow. Skips duplicates."""
+    try:
+        kdir = CFG.get("knowledge_dir", "/root/knowledge")
+        raw = os.path.join(kdir, "raw")
+        # dedupe: if the URL is already saved anywhere under raw/, do nothing
+        for root, _, files in os.walk(raw):
+            for fn in files:
+                if fn.endswith(".md"):
+                    try:
+                        if url in open(os.path.join(root, fn), encoding="utf-8", errors="ignore").read():
+                            return
+                    except Exception:
+                        pass
+        inbox = os.path.join(raw, "inbox")
+        os.makedirs(inbox, exist_ok=True)
+        now = time.gmtime()
+        stamp = time.strftime("%Y-%m-%d-%H%M", now)
+        itype = "video" if platform in ("tiktok", "video") else "link"
+        slug_src = author or re.sub(r"https?://(www\.)?", "", url)
+        slug = re.sub(r"[^a-z0-9؀-ۿ]+", "-", slug_src.lower()).strip("-")[:60] or "link"
+        fname = f"{stamp}-{slug}.md"
+        fpath = os.path.join(inbox, fname)
+        c = 1
+        while os.path.exists(fpath):
+            c += 1
+            fname = f"{stamp}-{slug}-{c}.md"
+            fpath = os.path.join(inbox, fname)
+        fm = ["---", "agent: ورّاق", "captured: " + time.strftime("%Y-%m-%dT%H:%M:%SZ", now),
+              "type: " + itype, "source: " + url, "content-depth: metadata-only"]
+        if author:
+            fm.append('title: "' + author.replace('"', "'") + '"')
+        fm += ["via: travelrepost", "---"]
+        body = ("\n".join(fm) + "\n\n# " + (author or url) + "\n\nSource: " + url + "\n\n"
+                + (text or "_(no content could be fetched)_") + "\n")
+        with open(fpath, "w", encoding="utf-8") as f:
+            f.write(body)
+    except Exception:
+        pass
+
+
 def process_link(url, chat):
     platform, author, text = fetch_post(url)
+    save_to_vault(url, platform, author, text)  # also add it to abodlinks (the knowledge vault)
     added = add_source(platform, author, url)
     quote = draft_quote(url, platform, author, text)
     if not quote or quote.upper().startswith("SKIP"):

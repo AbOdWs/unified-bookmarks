@@ -79,7 +79,10 @@ def draft_quote(url, platform, author, text):
     body = json.dumps({"model": "llama-3.3-70b-versatile", "temperature": 0.5, "max_tokens": 220,
                        "messages": [{"role": "system", "content": sysmsg}, {"role": "user", "content": usr}]}).encode()
     req = urllib.request.Request("https://api.groq.com/openai/v1/chat/completions", data=body,
-                                 headers={"Content-Type": "application/json", "Authorization": "Bearer " + GROQ})
+                                 headers={"Content-Type": "application/json", "Authorization": "Bearer " + GROQ,
+                                          # Groq is behind Cloudflare, which 403s (error 1010) the default
+                                          # Python-urllib User-Agent. Send a curl UA so the request is allowed.
+                                          "User-Agent": "curl/8.4.0"})
     try:
         r = json.load(urllib.request.urlopen(req, timeout=40))
         return r["choices"][0]["message"]["content"].strip()

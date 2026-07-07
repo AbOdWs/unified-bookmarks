@@ -312,7 +312,7 @@ def post_due():
     keep = []
     for it in q:
         if it["post_at"] <= now:
-            tg("sendMessage", chat_id=CHANNEL, text=f"{it['quote']}\n\nالمصدر: {it['url']}", disable_web_page_preview="false")
+            tg("sendMessage", chat_id=CHANNEL, text=f"{it['quote']}\n\n{it['url']}", disable_web_page_preview="false")
             if TR.get("x_autopost"):   # off by default — X charges for API posts (402). Set x_autopost:true in travelrepost.json to enable.
                 post_x(it.get("quote", ""), it.get("url"), it.get("platform"))
         else:

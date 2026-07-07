@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-# travelrepost — My Emperor Abdullah's travel content reposter (Phase 1).
+# travelrepost — My Emperor Abdullah's travel content reposter.
 # Owner shares a post link -> fetch -> add account to sources.csv -> draft quote ->
-# approval (inline buttons) -> on approve, schedule + post to the channel. Owner-only.
+# approval (inline buttons) -> on approve, schedule + post to the Telegram channel AND X.
+# Also saves every shared link into the knowledge vault (abodlinks sync). Owner-only.
 import json, time, urllib.request, urllib.parse, csv, re, os
+import hmac, hashlib, base64, secrets
 
 TR = json.load(open("/root/travelrepost.json"))
 CFG = json.load(open("/root/config.json"))
@@ -13,7 +15,10 @@ GROQ = CFG["groq_api_key"]
 YTDLP = CFG["ytdlp_api_url"]
 API = f"https://api.telegram.org/bot{TOKEN}"
 D = "/root/travelrepost"
-SOURCES, QUEUE, STATE, DRAFTS = f"{D}/sources.csv", f"{D}/queue.json", f"{D}/state.json", f"{D}/drafts.json"
+SOURCES = "/root/knowledge/travelrepost-sources.csv"
+QUEUE = "/root/travelrepost/queue.json"
+STATE = "/root/travelrepost/state.json"
+DRAFTS = "/root/travelrepost/drafts.json"
 INTERVAL = 60           # space scheduled posts 1 min apart
 INITIAL = 60            # first post ~1 min out
 
@@ -51,6 +56,91 @@ def add_source(platform, handle, url):
     with open(SOURCES, "w") as f:
         csv.writer(f).writerows(rows)
     return True
+
+
+HELP = (
+    "أوامر قائمة المتابعة:\n"
+    "/list — عرض الحسابات المتابَعة\n"
+    "/add tiktok|x @handle — إضافة حساب\n"
+    "/remove @handle — إزالة حساب\n"
+    "/on @handle — تفعيل · /off @handle — تعطيل\n\n"
+    "أو أرسل رابط منشور سفر لإنشاء مسودة إعادة نشر."
+)
+
+
+def _norm(h):
+    return h.strip().lstrip("@").lower()
+
+
+def _read_sources():
+    try:
+        with open(SOURCES) as f:
+            rows = [r for r in csv.reader(f) if r]
+    except Exception:
+        rows = []
+    if not rows or rows[0][:1] != ["platform"]:
+        rows = [["platform", "handle", "url", "added", "active", "notes"]] + rows
+    return rows
+
+
+def _write_sources(rows):
+    with open(SOURCES, "w") as f:
+        csv.writer(f).writerows(rows)
+
+
+def handle_command(t, chat):
+    parts = t.split()
+    cmd = parts[0].lower()
+    if cmd in ("/list", "/listaccounts"):
+        items = [r for r in _read_sources()[1:] if len(r) >= 2 and r[1]]
+        if not items:
+            tg("sendMessage", chat_id=chat, text="قائمة المتابعة فارغة. أضف حساباً مثل: /add tiktok @handle")
+            return
+        lines = ["- " + r[0] + ": @" + r[1] + " — " + ("نشط" if (len(r) < 5 or r[4] == "yes") else "معطّل") for r in items]
+        tg("sendMessage", chat_id=chat, text="قائمة المتابعة (" + str(len(items)) + "):\n" + "\n".join(lines))
+    elif cmd == "/add":
+        if len(parts) < 3 or parts[1].lower() not in ("tiktok", "x"):
+            tg("sendMessage", chat_id=chat, text="الصيغة: /add tiktok @handle  (المنصّة: tiktok أو x)")
+            return
+        platform, handle = parts[1].lower(), _norm(parts[2])
+        rows = _read_sources()
+        if any(len(r) >= 2 and r[0] == platform and r[1] == handle for r in rows[1:]):
+            tg("sendMessage", chat_id=chat, text="@" + handle + " موجود مسبقاً في " + platform + ".")
+            return
+        rows.append([platform, handle, "", time.strftime("%Y-%m-%d"), "yes", "added manually"])
+        _write_sources(rows)
+        tg("sendMessage", chat_id=chat, text="أُضيف @" + handle + " إلى متابعة " + platform + ".")
+    elif cmd == "/remove":
+        if len(parts) < 2:
+            tg("sendMessage", chat_id=chat, text="الصيغة: /remove @handle")
+            return
+        handle = _norm(parts[1])
+        rows = _read_sources()
+        kept = [rows[0]] + [r for r in rows[1:] if not (len(r) >= 2 and r[1] == handle)]
+        if len(kept) == len(rows):
+            tg("sendMessage", chat_id=chat, text="@" + handle + " غير موجود في القائمة.")
+            return
+        _write_sources(kept)
+        tg("sendMessage", chat_id=chat, text="أُزيل @" + handle + " من القائمة.")
+    elif cmd in ("/on", "/off"):
+        if len(parts) < 2:
+            tg("sendMessage", chat_id=chat, text="الصيغة: " + cmd + " @handle")
+            return
+        handle, want = _norm(parts[1]), ("yes" if cmd == "/on" else "no")
+        rows, found = _read_sources(), False
+        for r in rows[1:]:
+            if len(r) >= 2 and r[1] == handle:
+                while len(r) < 6:
+                    r.append("")
+                r[4] = want
+                found = True
+        if not found:
+            tg("sendMessage", chat_id=chat, text="@" + handle + " غير موجود في القائمة.")
+            return
+        _write_sources(rows)
+        tg("sendMessage", chat_id=chat, text="@" + handle + (" مُفعّل." if want == "yes" else " مُعطّل."))
+    else:
+        tg("sendMessage", chat_id=chat, text=HELP)
 
 
 def fetch_post(url):
@@ -92,12 +182,10 @@ def draft_quote(url, platform, author, text):
 
 def save_to_vault(url, platform, author, text):
     """Mirror abodlinkbot: drop the link into raw/inbox/ so ورّاق digests it into the
-    knowledge vault. Fire-and-forget — never breaks the repost flow. Skips duplicates."""
+    knowledge vault. Fire-and-forget — never breaks the repost flow. Skips duplicates.
+    Uses the HOST vault path (/root/knowledge); config.knowledge_dir is the n8n container path."""
     try:
-        # travelrepost runs on the HOST; the vault is /root/knowledge here.
-        # (config.knowledge_dir = /home/node/knowledge is the n8n *container* path.)
         raw = "/root/knowledge/raw"
-        # dedupe: if the URL is already saved anywhere under raw/, do nothing
         for root, _, files in os.walk(raw):
             for fn in files:
                 if fn.endswith(".md"):
@@ -164,7 +252,8 @@ def approve(did, chat):
     save(QUEUE, q)
     drafts.pop(did, None)
     save(DRAFTS, drafts)
-    tg("sendMessage", chat_id=chat, text=f"تمت الموافقة — سيُنشر بعد ~{int((post_at - time.time())/60)} دقيقة على {CHANNEL}.")
+    xnote = " و X" if TR.get("x_api") else ""
+    tg("sendMessage", chat_id=chat, text=f"تمت الموافقة — سيُنشر بعد ~{int((post_at - time.time())/60)} دقيقة على {CHANNEL}{xnote}.")
 
 
 def reject(did, chat):
@@ -174,6 +263,43 @@ def reject(did, chat):
     tg("sendMessage", chat_id=chat, text="رُفضت المسودة، لن تُنشر.")
 
 
+def _xq(s):
+    return urllib.parse.quote(str(s), safe="~")
+
+
+def post_x(quote, url, platform):
+    """Post to X: quote-tweet the original if it's an X post, else tweet quote + link. OAuth 1.0a, stdlib."""
+    x = TR.get("x_api")
+    if not x:
+        return None
+    m = re.search(r"(?:twitter\.com|x\.com)/[^/]+/status/(\d+)", url or "")
+    if m:
+        body = {"text": (quote or "")[:280], "quote_tweet_id": m.group(1)}
+    else:
+        room = max(0, 279 - len(url or ""))
+        body = {"text": ((quote or "")[:room] + "\n" + url) if url else (quote or "")[:280]}
+    o = {"oauth_consumer_key": x["api_key"], "oauth_nonce": secrets.token_hex(16),
+         "oauth_signature_method": "HMAC-SHA1", "oauth_timestamp": str(int(time.time())),
+         "oauth_token": x["access_token"], "oauth_version": "1.0"}
+    api = "https://api.twitter.com/2/tweets"
+    ps = "&".join(f"{_xq(k)}={_xq(v)}" for k, v in sorted(o.items()))
+    base = "&".join(["POST", _xq(api), _xq(ps)])
+    key = f"{_xq(x['api_secret'])}&{_xq(x['access_secret'])}"
+    o["oauth_signature"] = base64.b64encode(hmac.new(key.encode(), base.encode(), hashlib.sha1).digest()).decode()
+    hdr = "OAuth " + ", ".join(f'{_xq(k)}="{_xq(v)}"' for k, v in sorted(o.items()))
+    req = urllib.request.Request(api, data=json.dumps(body).encode(),
+                                 headers={"Authorization": hdr, "Content-Type": "application/json"})
+    try:
+        r = json.load(urllib.request.urlopen(req, timeout=30))
+        return r.get("data", {}).get("id")
+    except Exception as e:
+        try:
+            print("X post failed:", e.read().decode()[:200])
+        except Exception:
+            print("X post failed:", e)
+        return None
+
+
 def post_due():
     q = load(QUEUE, [])
     now = time.time()
@@ -181,6 +307,7 @@ def post_due():
     for it in q:
         if it["post_at"] <= now:
             tg("sendMessage", chat_id=CHANNEL, text=f"{it['quote']}\n\nالمصدر: {it['url']}", disable_web_page_preview="false")
+            post_x(it.get("quote", ""), it.get("url"), it.get("platform"))
         else:
             keep.append(it)
     if len(keep) != len(q):
@@ -202,12 +329,14 @@ def main():
                 if msg:
                     if str(msg.get("chat", {}).get("id")) != OWNER:
                         continue
-                    t = msg.get("text") or msg.get("caption") or ""
+                    t = (msg.get("text") or msg.get("caption") or "").strip()
                     m = re.search(r"https?://[^\s]+", t)
-                    if m:
+                    if t.startswith("/"):
+                        handle_command(t, str(msg["chat"]["id"]))
+                    elif m:
                         process_link(m.group(0), str(msg["chat"]["id"]))
                     else:
-                        tg("sendMessage", chat_id=str(msg["chat"]["id"]), text="أرسل رابط منشور سفر (تيك توك/إكس) وسأجهّز مسودة إعادة نشر للموافقة.")
+                        tg("sendMessage", chat_id=str(msg["chat"]["id"]), text="أرسل رابط منشور سفر، أو /help لإدارة قائمة المتابعة.")
                 elif cb:
                     if str(cb.get("from", {}).get("id")) != OWNER:
                         continue

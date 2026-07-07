@@ -14,8 +14,8 @@ YTDLP = CFG["ytdlp_api_url"]
 API = f"https://api.telegram.org/bot{TOKEN}"
 D = "/root/travelrepost"
 SOURCES, QUEUE, STATE, DRAFTS = f"{D}/sources.csv", f"{D}/queue.json", f"{D}/state.json", f"{D}/drafts.json"
-INTERVAL = 15 * 60      # space scheduled posts 15 min apart
-INITIAL = 3 * 60        # first post ~3 min out
+INTERVAL = 60           # space scheduled posts 1 min apart
+INITIAL = 60            # first post ~1 min out
 
 
 def tg(method, **params):

@@ -234,7 +234,7 @@ def process_link(url, chat):
     drafts[did] = {"url": url, "author": author, "platform": platform, "quote": quote}
     save(DRAFTS, drafts)
     note = (f"\n(أُضيف الحساب «{author}» إلى القائمة)" if added and author else "")
-    preview = f"مسودة إعادة نشر:\n\n«{quote}»\n\nالمصدر: {author} — {url}{note}"
+    preview = f"مسودة إعادة نشر:\n\n«{quote}»\n\n{url}{note}"
     kb = {"inline_keyboard": [[{"text": "نشر (جدولة)", "callback_data": f"ok:{did}"},
                               {"text": "رفض", "callback_data": f"no:{did}"}]]}
     tg("sendMessage", chat_id=chat, text=preview, reply_markup=json.dumps(kb), disable_web_page_preview="false")

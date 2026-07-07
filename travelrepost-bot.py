@@ -3,7 +3,7 @@
 # Owner shares a post link -> fetch -> add account to sources.csv -> draft quote ->
 # approval (inline buttons) -> on approve, schedule + post to the Telegram channel AND X.
 # Also saves every shared link into the knowledge vault (abodlinks sync). Owner-only.
-import json, time, urllib.request, urllib.parse, csv, re, os
+import json, time, urllib.request, urllib.parse, csv, re, os, html
 import hmac, hashlib, base64, secrets
 
 TR = json.load(open("/root/travelrepost.json"))
@@ -252,8 +252,14 @@ def approve(did, chat):
     save(QUEUE, q)
     drafts.pop(did, None)
     save(DRAFTS, drafts)
-    xnote = " و X" if TR.get("x_api") else ""
-    tg("sendMessage", chat_id=chat, text=f"تمت الموافقة — سيُنشر بعد ~{int((post_at - time.time())/60)} دقيقة على {CHANNEL}{xnote}.")
+    mins = int((post_at - time.time()) / 60)
+    tg("sendMessage", chat_id=chat, text=f"تمت الموافقة — سيُنشر على {CHANNEL} بعد ~{mins} دقيقة.")
+    if not TR.get("x_autopost"):
+        # X's API now charges (402 CreditsDepleted). Give the tweet as tap-to-copy text to post by hand.
+        xtext = (d.get("quote", "") + "\n" + d.get("url", "")).strip()
+        tg("sendMessage", chat_id=chat, parse_mode="HTML",
+           text="📋 للنشر على X — انسخ:\n<code>" + html.escape(xtext) + "</code>",
+           disable_web_page_preview="true")
 
 
 def reject(did, chat):
@@ -307,7 +313,8 @@ def post_due():
     for it in q:
         if it["post_at"] <= now:
             tg("sendMessage", chat_id=CHANNEL, text=f"{it['quote']}\n\nالمصدر: {it['url']}", disable_web_page_preview="false")
-            post_x(it.get("quote", ""), it.get("url"), it.get("platform"))
+            if TR.get("x_autopost"):   # off by default — X charges for API posts (402). Set x_autopost:true in travelrepost.json to enable.
+                post_x(it.get("quote", ""), it.get("url"), it.get("platform"))
         else:
             keep.append(it)
     if len(keep) != len(q):
